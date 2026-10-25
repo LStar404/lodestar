@@ -141,24 +141,107 @@ function createRenderer(): MarkdownIt {
 
 const renderer = createRenderer();
 
-/** 数学定界符典则化：\(…\) → $…$、\[…\] → $$…$$（与后端 normalize_math_text 同规则）。
- *  校验闸门接受四种数学写法，但渲染器只认 $ 形式——存量数据里的 \(..\)/\[..\)
- *  曾显示成裸文本（导出侧则被转义成垃圾）；预览截断的 $ 配对逻辑也依赖此典则化。 */
-function canonicalizeMathDelimiters(src: string): string {
-  // 区间 + 邻接守卫（与后端 normalize_math_text 同规则）：已有 $..$ 段内的
-  // \(..\) 不转换（存量脏嵌套 $\(\zeta\)_1$），转换出的 $ 不得与相邻 $ 粘成假 $$
+// 代码区哨兵：\u0001 在笔记正文里永不合法（后端 sanitize_control_chars 会清掉），
+// 用它临时顶替代码片段，避免把代码里的 \(..\) 当公式改写。
+const MASK = "\u0001";
+
+function lineStartAt(src: string, pos: number): number {
+  const i = src.lastIndexOf("\n", pos - 1);
+  return i < 0 ? 0 : i + 1;
+}
+function lineEndAt(src: string, pos: number): number {
+  const i = src.indexOf("\n", pos);
+  return i < 0 ? src.length : i;
+}
+
+/** 遮住代码区：围栏代码块（``` 与 ~~~）与行内代码（`…`）。
+ *  代码里的 \(x\) 是字面文本，必须原样保留——后端 normalize_math_text 只遮围栏，
+ *  前端预览多遮一层行内代码（行内代码常被用来展示公式写法）。 */
+function maskCode(src: string, masked: string[]): string {
+  const keep = (s: string): string => {
+    masked.push(s);
+    return MASK + (masked.length - 1) + MASK;
+  };
+  const lines = src.split("\n");
+  const out: string[] = [];
+  let fence: { ch: string; len: number } | null = null;
+  let buf: string[] = [];
+  for (const line of lines) {
+    if (fence) {
+      buf.push(line);
+      const close = /^[ \t]*(`{3,}|~{3,})[ \t]*$/.exec(line);
+      if (close && close[1][0] === fence.ch && close[1].length >= fence.len) {
+        out.push(keep(buf.join("\n")));
+        buf = [];
+        fence = null;
+      }
+      continue;
+    }
+    const open = /^[ \t]*(`{3,}|~{3,})(.*)$/.exec(line);
+    if (open) {
+      fence = { ch: open[1][0], len: open[1].length };
+      buf = [line];
+      continue;
+    }
+    out.push(line);
+  }
+  if (fence) out.push(keep(buf.join("\n")));   // 未闭合围栏：按代码吃到文末
+  // 行内代码必须在围栏遮蔽之后处理：围栏内容已是哨兵，这里的反引号规则碰不到它
+  return out.join("\n").replace(/(`+)([^`\n]*?)\1/g, (m) => keep(m));
+}
+
+/** 数学定界符典则化：\(…\) → $…$；\[…\] 独占一行 → $$…$$，行中 → $…$。
+ *
+ *  与后端 src/core/text.py normalize_math_text 的差异（有意为之）：
+ *  - 后端一律把 \[..\] 典则化成 $$..$$；但 markdown-it 的 display 公式只认
+ *    「行首 $$ … 行尾 $$」，行中的 $$ 会渲染出多余裸 $，同一行两个 \[..\] 还会
+ *    把中间文字吞进公式（实测：前文 \[x+1\] 后文）。故前端只在「独占一行」时转 $$，
+ *    行中改渲染为行内 $…$（信息不丢、不出裸 $）。
+ *  - 后端只遮围栏代码，前端连行内代码一起遮（代码里的 \(..\) 必须原样保留）。
+ *  - 行内 body（\(..\) 与行中的 \[..\]）换行并成空格，对齐后端行内规则；
+ *    独占一行 \[..\] 的 body 换行保留（多行 display 合法）。
+ *  其余对齐后端：已有 $..$ 区间内不转换（存量脏嵌套 $\(\zeta\)_1$），转换出的 $
+ *  不得与相邻 $ 粘成假 $$（开闭邻接守卫）；只接受成对分隔符（\(…\] 不转）。
+ *  inlineOnly=true 供标题等行内渲染：此时 \[..\] 一律按行内 $…$ 处理（行内渲染器
+ *  没有块级公式规则，$$ 会显示成裸文本）。 */
+function canonicalizeMathDelimiters(src: string, inlineOnly = false): string {
+  if (!src) return src;
+  const masked: string[] = [];
+  let text = maskCode(src.replace(/\r\n?/g, "\n"), masked);
+
+  // 区间守卫（与后端 normalize_math_text 同规则）：已有 $..$ 段内的定界符不转换
+  // （存量脏嵌套 $\(\zeta\)_1$）；邻接守卫由正则的 (?<!\$)/(?!\$) 承担。
   const spans: Array<[number, number]> = [];
-  for (const m of src.matchAll(/(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/g)) {
+  for (const m of text.matchAll(/(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/g)) {
     spans.push([m.index ?? 0, (m.index ?? 0) + m[0].length]);
   }
-  return src.replace(
+  const inMathSpan = (start: number, end: number): boolean =>
+    spans.some(([a, b]) => !(end <= a || start >= b));
+
+  // 开闭配对表：合法公式是 `\(`…`\)` 与 `\[`…`\]`——开盘和收盘本就是不同字符，
+  // 必须按表校验；只接受成对的分隔符。
+  const PAIRS: Record<string, string> = { "(": ")", "[": "]" };
+  text = text.replace(
     /(?<!\$)\\(\[|\()([\s\S]*?)\\(\]|\))(?!\$)/g,
     (full, open: string, body: string, close: string, offset: number) => {
-      if (open !== close) return full;
-      if (spans.some(([a, b]) => !(offset + full.length <= a || offset >= b))) return full;
-      return open === "[" ? `$$${body}$$` : `$${body}$`;
-    },
+      if (PAIRS[open] !== close) return full;
+      if (inMathSpan(offset, offset + full.length)) return full;
+      // 「独占一行」= 开标记所在行前面只有空白，且闭标记之后到行尾只有空白
+      const standalone = !inlineOnly
+        && text.slice(lineStartAt(text, offset), offset).trim() === ""
+        && text.slice(offset + full.length, lineEndAt(text, offset + full.length)).trim() === "";
+      if (open === "[" && standalone) return "$$" + body + "$$";
+      // 行内渲染：跨行 body 并成空格，否则 markdown-it 的 $…$ 规则不跨行匹配，
+      // $ 会配对错位、散文被吞进公式（同后端行内规则）
+      return "$" + body.replace(/\r?\n/g, " ") + "$";
+    }
   );
+
+  // 还原代码区：逐 token 还原（行内代码原文不会包含围栏哨兵）
+  for (let i = 0; i < masked.length; i++) {
+    text = text.split(MASK + i + MASK).join(masked[i]);
+  }
+  return text;
 }
 
 export function renderMarkdown(content: string, docId: string, captions: Record<string, string> = {}): string {
@@ -167,7 +250,7 @@ export function renderMarkdown(content: string, docId: string, captions: Record<
 
 /** 行内渲染（标题等单行文本）：$…$ 走 KaTeX，无块级包装。 */
 export function renderInline(content: string, docId: string = ""): string {
-  return renderer.renderInline(canonicalizeMathDelimiters(content || ""),
+  return renderer.renderInline(canonicalizeMathDelimiters(content || "", true),
     { docId, captions: {} } as RenderEnv);
 }
 

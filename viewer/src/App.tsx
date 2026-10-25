@@ -81,7 +81,9 @@ export default function App() {
   const toast = useStore((s) => s.toast);
   const blocks = useStore((s) => s.blocks);
   const selectedBlockId = useStore((s) => s.selectedBlockId);
-  const selectBlock = useStore((s) => s.selectBlock);
+  // J/K 切块同样走草稿守卫（Review #6）：源码视图有未保存草稿时不得静默换块，
+  // 否则 BlockEditor 卸载即丢草稿；取消（返回 false）时选中块保持不变
+  const requestSelectBlock = useStore((s) => s.requestSelectBlock);
   const setView = useStore((s) => s.setView);
   const view = useStore((s) => s.view);
   const openSettings = useStore((s) => s.openSettings);
@@ -118,11 +120,11 @@ export default function App() {
       if (e.key === "j") {
         e.preventDefault();
         const next = blocks[Math.min(blocks.length - 1, idx + 1)] ?? blocks[0];
-        if (next) selectBlock(next.id);
+        if (next) requestSelectBlock(next.id);
       } else if (e.key === "k") {
         e.preventDefault();
         const prev = blocks[Math.max(0, idx - 1)] ?? blocks[0];
-        if (prev) selectBlock(prev.id);
+        if (prev) requestSelectBlock(prev.id);
       } else if (e.key === "e") {
         setView("source");
       } else if (e.key === "s") {

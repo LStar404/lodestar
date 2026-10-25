@@ -78,8 +78,10 @@ def append_change(layout: Layout, doc_id: str, rel_path: str, rows: Iterable[dic
 
 
 def doc_lock(layout: Layout, doc_id: str, timeout: float = LOCK_TIMEOUT) -> FileLock:
+    """per-doc 文件锁；timeout 必须真正传给 FileLock——默认 timeout=-1 是无限等待，
+    持锁方卡死（如后台追加/恢复异常）会把所有提交与请求一起挂住。"""
     layout.locks_dir.mkdir(parents=True, exist_ok=True)
-    return FileLock(str(layout.lock_file(doc_id)))
+    return FileLock(str(layout.lock_file(doc_id)), timeout=timeout)
 
 
 def _target_path(layout: Layout, doc_id: str, rel_path: str) -> Path:

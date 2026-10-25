@@ -32,6 +32,18 @@ def create_app(root: str | Path | None = None, port: int | None = None) -> FastA
         # 进程重启恢复（10.4）：把上次进程死掉遗留的 queued/running 任务标为 interrupted。
         # 只能在服务真正开始服务时执行——构造 AppState 即恢复会误杀并行进程的活任务。
         state.tasks.interrupt_stale()
+        # 追加 swap 崩溃恢复（A1）：swap 是多步 rename，进程被强杀会留下 .bak-append-*
+        # 与部分换入的真实目录；按 journal 回滚旧产物并重建派生索引。同样只能在实际
+        # 服务启动时执行（放 AppState.__init__ 会误伤测试/并行进程）。
+        try:
+            from src.ingest.append_stage import recover_interrupted_append
+
+            recover_interrupted_append(state.layout)
+        except Exception:  # noqa: BLE001 - 启动恢复失败不得阻止服务启动
+            import logging
+
+            logging.getLogger("note-gen").exception(
+                "追加中断恢复失败（备份已保留，重启会重试）")
         yield
 
     app = FastAPI(title="note-gen", version="0.1.0", lifespan=lifespan)

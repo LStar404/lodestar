@@ -132,8 +132,13 @@ def _notes_text(blocks_by_chapter: dict[str, list[dict]], max_chars: int = 8000)
 
 def generate_quiz(client, *, store, chapter_ids: list[str], kinds: list[str], count: int,
                   difficulty: str, model: str | None, config: dict,
-                  qbank: list[dict] | None = None, max_samples: int = 6) -> dict:
-    """出题主流程：笔记 + 题库样本 → LLM → 校验 → 落盘返回。"""
+                  qbank: list[dict] | None = None, max_samples: int = 6,
+                  persist: bool = True) -> dict:
+    """出题主流程：笔记 + 题库样本 → LLM → 校验 → 落盘返回。
+
+    persist=False 只生成不落盘：路由侧需要在 doc 锁内写盘（与追加讲义的 swap
+    串行化），避免「生成期间追加 swap 覆盖 quiz 文件」的静默丢失。
+    """
     from src.generate.prompts import compact_schema
 
     kinds = [k for k in kinds if k in QUESTION_TYPES] or ["choice", "short"]
@@ -191,8 +196,14 @@ def generate_quiz(client, *, store, chapter_ids: list[str], kinds: list[str], co
             "created_at": utc_now_iso(), "model": model or client.route("quiz"),
             "kinds": kinds, "count": len(out_questions), "difficulty": difficulty or "期末水平",
             "chapters": chapter_ids, "questions": out_questions}
+    if persist:
+        save_quiz(store, quiz)
+    return quiz
+
+
+def save_quiz(store, quiz: dict) -> None:
+    """把套题写入 data/<doc>/quiz/<quiz_id>.json（调用方负责在 doc 锁内调用）。"""
     out_dir = store.layout.doc_dir(store.doc_id) / "quiz"
     out_dir.mkdir(parents=True, exist_ok=True)
     atomic_write_bytes(out_dir / f"{quiz['quiz_id']}.json",
                        (json.dumps(quiz, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
-    return quiz

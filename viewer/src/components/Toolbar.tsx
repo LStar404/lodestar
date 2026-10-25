@@ -74,7 +74,6 @@ export default function Toolbar() {
   const manifest = useStore((s) => s.manifest);
   const chapterId = useStore((s) => s.chapterId);
   const dirtyDraft = useStore((s) => s.dirtyDraft);
-  const setDraft = useStore((s) => s.setDraft);
   const loadDocs = useStore((s) => s.loadDocs);
   const selectDoc = useStore((s) => s.selectDoc);
   const selectChapter = useStore((s) => s.selectChapter);
@@ -157,8 +156,18 @@ export default function Toolbar() {
       else if (t.status === "partial") setToast("生成完成（部分块失败，详见「生成记录」），已刷新");
     } else if (kind === "import" || kind === "rebuild") {
       void st.loadDocs().then(() => {
-        const docId = t.result?.doc_id;
-        if (docId) void st.selectDoc(docId);
+        const newDocId = t.result?.doc_id;
+        if (!newDocId) return;
+        // 草稿守卫（Review #6 残余）：这是后台任务完成事件，selectDoc 会清空选中块并
+        // 卸载源码/预览里的 BlockEditor。有未保存草稿时不得静默换书，让用户自己决定何时切。
+        if (useStore.getState().dirtyDraft !== null) {
+          setToast(
+            (kind === "rebuild" ? "重建完成" : "导入完成") +
+              "（当前块有未保存草稿，未自动切换教材；保存后可在顶栏切换）"
+          );
+          return;
+        }
+        void st.selectDoc(newDocId);
       });
       if (t.status === "succeeded") {
         setToast(kind === "rebuild" ? "重建完成，已打开文档" : "导入完成，已打开文档");
@@ -318,12 +327,12 @@ export default function Toolbar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId]);
 
-  // 脏草稿守卫（7.3）：切章/换教材必须提示，不能静默丢弃
+  // 脏草稿守卫（7.3）：切章/换教材必须提示，不能静默丢弃。
+  // P3-7：确认后不在这里清标记——交给 selectDoc/selectChapter 成功切换时清；
+  // 切换请求失败时草稿仍在编辑器里，标记必须保留（否则再切块会静默丢草稿）。
   const guardDirty = (): boolean => {
     if (dirtyDraft === null) return true;
-    const ok = window.confirm("当前块有未保存草稿，切换将丢弃草稿，继续吗？");
-    if (ok) setDraft(null);
-    return ok;
+    return window.confirm("当前块有未保存草稿，切换将丢弃草稿，继续吗？");
   };
 
   const runSearch = async () => {
@@ -611,15 +620,20 @@ export default function Toolbar() {
               "确认删除教材《" + (doc?.title ?? docId) + "》？\n\n" +
               "· 将删除其全部笔记块、锚点、历史与图资源（约 " + chapters + " 章）\n" +
               "· 移入回收站 data/.trash，可在磁盘上找回\n" +
-              "· 此操作会立即从列表中移除该教材"
+              "· 此操作会立即从列表中移除该教材" +
+              // 草稿守卫（Review #6 残余）：删书会卸载编辑器，草稿只存在内存里，删了找不回
+              (dirtyDraft !== null ? "\n· 当前块有未保存草稿，删除后无法找回" : "")
             );
             if (!ok) return;
             void api
               .deleteDoc(docId)
               .then(async (resp: any) => {
                 setToast("已删除《" + (doc?.title ?? docId) + "》，已移入回收站（data/.trash 可找回）");
+                // 文档已删：选中块随之失效、编辑器卸载。草稿标记也要一起清掉，
+                // 否则残留的 dirtyDraft 会让之后每次切块都误报「有未保存草稿」。
                 useStore.setState({ docId: null, manifest: null, chapterId: null,
-                                    blocks: [], selectedBlockId: null });
+                                    blocks: [], selectedBlockId: null,
+                                    dirtyDraft: null, zoomBlockId: null });
                 await loadDocs();
                 // 删除反馈（结果对话框）：删了什么、删到哪、能否找回，一次说清
                 setDeleted({
@@ -736,7 +750,15 @@ export default function Toolbar() {
             <div className="search-group">
               <b>块</b>
               {results.blocks.map((b: any) => (
-                <div key={b.block_id} className="search-item" onClick={() => useStore.getState().selectBlock(b.block_id)}>
+                <div
+                  key={b.block_id}
+                  className="search-item"
+                  onClick={() => {
+                    // 切块入口（Review #6 残余）：检索结果同样走受保护动作；
+                    // 用户在草稿确认里取消时选中块不变，这里也不做任何后续副作用
+                    useStore.getState().requestSelectBlock(b.block_id);
+                  }}
+                >
                   {b.title}
                 </div>
               ))}

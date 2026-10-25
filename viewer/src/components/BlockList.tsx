@@ -7,7 +7,8 @@ import { sortBlocks } from "../api/types";
 export default function BlockList({ blocks, selectedId, onSelect, renderEditor }: {
   blocks: NoteBlock[];
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  /** 返回 false = 用户在草稿保护确认里取消，调用方不得再执行打开放大层等副作用 */
+  onSelect: (id: string) => boolean;
   renderEditor?: (block: NoteBlock) => React.ReactNode;
 }) {
   const ordered = sortBlocks(blocks.filter((b) => !b.deleted_at));

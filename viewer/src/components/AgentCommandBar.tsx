@@ -17,8 +17,20 @@ export default function AgentCommandBar() {
     ? `/api/v1/blocks/${selectedBlockId}/agent-edit`
     : `/api/v1/docs/${docId}/chapters/${chapterId}/agent-edit`;
 
+  // 草稿守卫（Review #6 残余）：有选中块时 agent 的编辑目标就是它。plan/exec 都基于
+  // 服务端内容工作，exec 后 loadBlocks 还会让 revision 变化 → BlockEditor 按 key 重挂载，
+  // 未保存草稿随之丢失。有草稿时先让用户保存/还原，不要静默覆盖。
+  // view==="card" 时编辑器未挂载（与 requestSelectBlock/loadBlocks 的守卫条件一致），不拦。
+  const blockedByDraft = (): boolean => {
+    const st = useStore.getState();
+    if (!selectedBlockId || st.view === "card" || st.dirtyDraft === null) return false;
+    setToast("当前块有未保存草稿：请先保存（Ctrl+S）或还原，再让 agent 编辑");
+    return true;
+  };
+
   const plan = async () => {
     if (!instruction.trim()) return;
+    if (blockedByDraft()) return;
     if (!selectedBlockId && !chapterId) {
       // 否则请求打到 chapters/undefined/agent-edit，报错令人困惑
       setToast("请先选择章节或块，再给 agent 下指令");
@@ -35,6 +47,7 @@ export default function AgentCommandBar() {
 
   const exec = async () => {
     if (!agent.planId) return;
+    if (blockedByDraft()) return;
     setAgent({ running: true, error: null });
     try {
       const res = await api.agentEdit(url, { mode: "exec", plan_id: agent.planId, confirmed: true });
@@ -53,6 +66,8 @@ export default function AgentCommandBar() {
   };
 
   const undo = async () => {
+    // 撤销会回滚块并 loadBlocks 刷新：若正在编辑的块被改到，编辑器重挂载会丢草稿
+    if (blockedByDraft()) return;
     for (const item of agent.diff?.applied ?? []) {
       if (!item.block_id) continue;
       try {

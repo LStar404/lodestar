@@ -35,14 +35,14 @@ if errorlevel 1 goto err_nopython
 cd /d "%APP_DIR%"
 
 rem ---------- 1) 依赖检查 ----------
-python -c "import fastapi, uvicorn, pydantic, yaml, filelock, httpx, pypdf, jinja2" >nul 2>nul
+python -c "import fastapi, uvicorn, pydantic, yaml, filelock, httpx, pypdf, jinja2, multipart" >nul 2>nul
 if errorlevel 1 goto install_deps
 goto deps_ok
 
 :install_deps
 echo [提示] 检测到缺少依赖，正在安装（首次较慢）...
 python -m pip install -r requirements.txt
-if errorlevel 1 python -m pip install fastapi uvicorn pydantic PyYAML filelock httpx pypdf jinja2 json-repair pylatexenc sqlite-vec genanki
+if errorlevel 1 python -m pip install fastapi uvicorn pydantic PyYAML filelock httpx pypdf jinja2 json-repair pylatexenc sqlite-vec genanki python-multipart
 
 :deps_ok
 rem ---------- 2) 前端构建检查 ----------

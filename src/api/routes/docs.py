@@ -460,7 +460,21 @@ async def qbank_upload(request: Request, doc_id: str, file: UploadFile = File(..
     entries = extract_qbank_entries(file.filename or "upload", text)
     if not entries:
         raise InputError("没有从文件中识别出可用的题目段落")
-    added = append_qbank(st.layout.doc_dir(doc_id), entries)
+    # 题库写在事务外（不 bump data_revision），必须与追加讲义的 swap 串行：
+    # 否则追加 staging 期间上传的题库会被整目录 swap 静默覆盖回快照（数据丢失）。
+    # 注意 qbank_upload 是 async 路由：FileLock 是阻塞调用，必须丢线程池，否则
+    # 等锁期间会冻结整个事件循环（所有请求一起卡住）。
+    from fastapi.concurrency import run_in_threadpool
+    from src.core.transactions import doc_lock
+
+    def _locked_append() -> int:
+        with doc_lock(st.layout, doc_id):
+            # 等锁期间文档可能被删/移入回收站：不要凭空重建 doc 目录
+            if not st.layout.manifest(doc_id).exists():
+                raise NotFound(f"文档不存在: {doc_id}")
+            return append_qbank(st.layout.doc_dir(doc_id), entries)
+
+    added = await run_in_threadpool(_locked_append)
     return {"added": added, "count": len(entries), "file": file.filename}
 
 
@@ -487,12 +501,22 @@ def quiz_generate(request: Request, doc_id: str, body: dict):
     models = (st.config.get("generate", {}).get("models", {}) or {})
     model = models.get("quiz") or models.get("fill")
     try:
+        # 只生成不落盘：与追加讲义 swap 共用 doc 锁写盘（生成过程不持锁，
+        # LLM 调用可达分钟级；只有最终写文件需要串行化）
         quiz = generate_quiz(st.client, store=store, chapter_ids=chapters, kinds=kinds,
                              count=count, difficulty=difficulty, model=model,
-                             config=st.config, qbank=load_qbank(st.layout.doc_dir(doc_id)))
+                             config=st.config, qbank=load_qbank(st.layout.doc_dir(doc_id)),
+                             persist=False)
     except ValueError as exc:
         # 产品规则类错误（无笔记/结果为空）归 4xx，不给用户 500
         raise InputError(str(exc))
+    from src.core.transactions import doc_lock
+    from src.generate.quiz import save_quiz
+
+    with doc_lock(st.layout, doc_id):
+        # 生成期间文档可能被删/被追加 swap：等锁后复核，避免把套题写进已删除文档
+        if st.layout.manifest(doc_id).exists():
+            save_quiz(store, quiz)
     return quiz
 
 
@@ -500,8 +524,11 @@ def quiz_generate(request: Request, doc_id: str, body: dict):
 async def append_pdf(request: Request, doc_id: str, file: UploadFile = File(...)):
     """追加讲义：把新 PDF 接到现有教材尾部（老师逐份发放的讲义场景）。
 
-    合并 PDF 后全书重解析 + 全章重锚定：锚点身份 = 内容哈希——已有笔记、生成缓存、
-    报告全部原样保留，新页只带来新章节（生成过的章照旧跳过/复用）。"""
+    事务化（Review #1）：合并/解析/分章/重锚定全部在 data/.append-staging-* 的独立
+    快照里完成，真实 PDF 与主数据在成功前只读；全部成功后才在 doc_lock 内校验
+    data_revision、备份旧产物并统一 swap。旧章 chapter_id/title/页区间原样保留
+    （追加只在尾部加页），只有新页分配新章——人工笔记、生成缓存、报告全部原样保留。
+    任何一步失败只删除暂存目录，真实数据零改动。"""
     st = state(request)
     if not (file.filename or "").lower().endswith(".pdf"):
         raise InputError("追加只支持 PDF（PPTX 讲义请合并后重新导入）")
@@ -518,37 +545,10 @@ async def append_pdf(request: Request, doc_id: str, file: UploadFile = File(...)
     man = DocStore(st.layout, doc_id).manifest()
 
     def run(req, progress, is_cancelled, register_artifact, task_id=None):
-        from io import BytesIO
+        from src.ingest.append_stage import run_append
 
-        from pypdf import PdfReader, PdfWriter
-
-        from src.anchor.chunker import chunk_and_anchor
-
-        progress({"stage": "ingest", "pages_done": 0, "pages_total": None})
-        # 1) 合并：老 PDF + 新 PDF → 原地替换（pdf_path 不变，内存句柄避开 Windows 占用）
-        writer = PdfWriter()
-        writer.append(PdfReader(BytesIO(existing.read_bytes())))
-        writer.append(PdfReader(BytesIO(data)))
-        buf = BytesIO()
-        writer.write(buf)
-        existing.write_bytes(buf.getvalue())
-        # 2) 全书重解析（页内容确定性不变：锚点/缓存/报告身份全部保留）
-        manifest_new = parse_pdf_with_fallback(
-            existing, st.layout.ingest_root, st.config.get("parser", {}).get("default", "auto"),
-            layout=st.layout, doc_id=doc_id, profile=man.get("profile", "textbook"),
-            title=man.get("title"), config=st.config, progress=progress,
-            vision_ocr=_vision_ocr_for(st))
-        # 3) 全章重锚定（新增页带来新章节，旧章锚点身份不变）
-        chapters = manifest_new["chapters"]
-        counts = {}
-        for idx, ch in enumerate(chapters):
-            if is_cancelled():
-                raise TaskCancelled("任务已取消")
-            progress({"stage": "anchor", "done": idx, "total": len(chapters),
-                      "chapter_id": ch["chapter_id"]})
-            counts[ch["chapter_id"]] = chunk_and_anchor(doc_id, ch["chapter_id"], layout=st.layout)
-        progress({"stage": "anchor", "done": len(chapters), "total": len(chapters)})
-        return {"doc_id": doc_id, "chapters": chapters, "anchors": counts, "appended": True}
+        return run_append(st.layout, doc_id, data, st.config, progress=progress,
+                          is_cancelled=is_cancelled, vision_ocr=_vision_ocr_for(st))
 
     task = st.tasks.submit("import", run, {"doc_id": doc_id, "mode": "append",
                                            "filename": file.filename},
@@ -866,7 +866,10 @@ def _build_generate_run(st, doc_id: str, chapter_id, model, resume: bool = False
                     prev = None
                 ch_meta = next((c for c in store.manifest().get("chapters", [])
                                 if c.get("chapter_id") == ch), {})
+                # outline_complete 缺省视为 True（旧报告无此字段）；修复前写下的
+                # 「complete + 提纲不全」报告不得跳过——否则缺失的提纲批次永远补不回来
                 if (prev and prev.get("status") == "complete"
+                        and prev.get("outline_complete", True)
                         and prev.get("outline_hash") == (ch_meta.get("outline_hash") or "")):
                     progress({"stage": "generate", "chapter_id": ch, "skipped": True})
                     return {"doc_id": doc_id, "chapter_id": ch, "status": "skipped",

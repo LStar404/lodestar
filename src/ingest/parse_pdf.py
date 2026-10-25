@@ -588,6 +588,9 @@ def parse_pdf(pdf_path: str | Path, out_dir: str | Path, parser: str = "auto", *
             chain = ["marker", "docling", "pymupdf", "pypdf"]   # 无文字层的扫描书
     else:
         chain = [chosen]
+    # 默认 doc_id 在命名空间检查前归一：CLI --doc-id 可选，doc_namespace(None)
+    # 会在下面才生成默认 ID 之前就 AttributeError（pdf_path 已 resolve 且验存在）
+    doc_id = doc_id or ("doc-" + sha256_file(pdf_path)[:12])
     # 5.2：doc_ns 碰撞必须拒绝导入，否则全局点查（anchor_id 前缀）产生歧义
     ns = doc_namespace(doc_id)
     for other in layout.data_dir.glob("*/manifest.json"):
@@ -650,7 +653,6 @@ def parse_pdf(pdf_path: str | Path, out_dir: str | Path, parser: str = "auto", *
     if bulk:
         for warn in bulk.get("warnings", []):
             print(f"[ingest] {adapter.name}: {warn}", file=sys.stderr)
-    doc_id = doc_id or ("doc-" + sha256_file(pdf_path)[:12])
     pages_dir = out_dir / doc_id / "pages"
     if pages_dir.exists():
         shutil.rmtree(pages_dir)

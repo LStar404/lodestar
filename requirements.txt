@@ -10,3 +10,4 @@ json-repair>=0.25
 pylatexenc>=2.10
 sqlite-vec>=0.1.6
 genanki>=0.13
+python-multipart>=0.0.9

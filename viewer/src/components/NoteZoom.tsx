@@ -94,14 +94,10 @@ export default function NoteZoom() {
             className="note-zoom-edit"
             title="编辑此卡（切到源码视图）"
             onClick={() => {
-              // 与视图切换同款草稿守卫：不静默丢弃未保存草稿
+              // 切块统一走 store 的草稿守卫（Review #6）：不静默丢弃未保存草稿；
+              // 用户取消时既不换块也不切视图
               const st = useStore.getState();
-              if (st.view === "source" && st.dirtyDraft !== null) {
-                const ok = window.confirm("当前块有未保存草稿，编辑其他块将丢弃草稿，继续吗？");
-                if (!ok) return;
-                st.setDraft(null);
-              }
-              st.selectBlock(block.id);
+              if (!st.requestSelectBlock(block.id)) return;
               st.setView("source");
               closeZoom();
             }}

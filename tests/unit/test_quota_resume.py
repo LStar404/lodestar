@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from src.core.errors import QuotaExhausted
+import json
+
+from src.core.errors import LLMError, QuotaExhausted
 from src.core.llm import DummyProvider, LLMClient
 from src.core.model_registry import ModelRegistry
 from src.core.paths import Layout
@@ -17,7 +19,7 @@ CFG = {"generate": {"models": {"default": "dummy/fake", "outline": "dummy/fake",
        "cache": {"dir": "cache/gen"}}
 
 
-def _provider_for(layout: Layout) -> ModelRegistry:
+def _provider_for(layout: Layout, pricing: dict | None = None) -> ModelRegistry:
     registry = ModelRegistry(layout)
     registry.upsert_provider({"id": "dummy", "label": "Dummy", "protocol": "openai_compat",
                               "base_url": "http://127.0.0.1:1", "api_key": None,
@@ -27,9 +29,9 @@ def _provider_for(layout: Layout) -> ModelRegistry:
                                           "max_output_tokens": 2048,
                                           "capabilities": {"json_schema": True, "tools": True,
                                                            "vision": False},
-                                          "pricing": {"input_per_million": 0,
-                                                      "output_per_million": 0,
-                                                      "currency": "USD"}}]})
+                                          "pricing": pricing or {"input_per_million": 0,
+                                                                 "output_per_million": 0,
+                                                                 "currency": "USD"}}]})
     return registry
 
 
@@ -72,9 +74,20 @@ def test_quota_exhaustion_pauses_then_next_run_resumes(sample_doc):
                           registry=registry)
     assert r2["cache_hit"] is True, r2
     assert r2["status"] == "complete", r2
-    blocks2 = {b["title"] for b in store.block_rows("ch01")}
-    assert {"定义一", "动机二"} <= blocks2, f"续填后两块都应存在: {blocks2}"
-    assert len(client2.calls if hasattr(client2, "calls") else []) >= 0
+    blocks2 = {b["title"]: b for b in store.block_rows("ch01")}
+    assert {"定义一", "动机二"} <= set(blocks2), f"续填后两块都应存在: {list(blocks2)}"
+    # 续跑只补失败块 t2 一次调用；t1 已完成 → 必须原样复用，不得重烧。
+    # （原断言 `len(client2.calls if hasattr(...) else []) >= 0` 恒真，等于没测。）
+    provider2 = client2.overrides["dummy"]
+    assert len(provider2.calls) == 1, f"只应补填 t2 一块，实际 {len(provider2.calls)} 次调用"
+    assert client2.stats["calls"] == 1
+    retry_prompt = json.dumps(provider2.calls[0]["messages"],
+                              ensure_ascii=False).replace('\\"', '"')
+    # 提纲 temp_id t2 进生成后带批前缀 b0-；只允许补填 b0-t2
+    assert '"temp_id": "b0-t2"' in retry_prompt, retry_prompt[-600:]
+    assert '"temp_id": "b0-t1"' not in retry_prompt, "已完成块 t1 不得重新填充"
+    assert blocks2["定义一"]["content"] == "第一块内容。", "t1 正文必须保持首次生成的内容"
+    assert blocks2["动机二"]["content"] == "第二块内容。"
 
 
 def test_quota_circuit_breaker_stops_further_calls(tmp_path):
@@ -137,4 +150,57 @@ def test_resume_reuses_ok_blocks_across_cache_key_change(sample_doc):
     blocks = {b["title"]: b for b in store.block_rows("ch01")}
     assert "定义一" in blocks and "动机二" in blocks, list(blocks)
     assert blocks["定义一"]["content"] == "第一块内容。", "已完成块必须原样复用（不得重填）"
+
+
+def test_cached_failed_refill_obeys_chapter_budget(sample_doc):
+    """Review #5：命中缓存后的失败块补填必须受 max_cost_per_chapter 约束。
+
+    复现：限额 0.001、定价每百万 token 输入/输出各 1；补填的最坏预留（≈0.002+）
+    已经超限，必须在调用供应商之前被预算守卫拦下——旧实现补填显式 budget=None，
+    会真实调用供应商 1 次并记录约 0.004 成本，然后谎报 complete。
+    """
+    layout, doc_id = sample_doc
+    registry = _provider_for(layout, pricing={"input_per_million": 1.0,
+                                              "output_per_million": 1.0,
+                                              "currency": "USD"})
+    store = DocStore(layout, doc_id)
+    anchors = store.anchor_rows("ch01")
+    aid = anchors[1]["anchor_id"]
+    quote = anchors[1]["content"][:20]
+    outline = {"blocks": [
+        {"temp_id": "t1", "type": "definition", "title": "定义一", "basis": "anchored",
+         "sources": [{"anchor_id": aid, "quote": quote, "relation": "defines"}],
+         "depends_on": [], "order": 1},
+        {"temp_id": "t2", "type": "motivation", "title": "动机二", "basis": "synthesis",
+         "sources": [], "depends_on": [], "order": 2}]}
+    fill1 = {"content": "第一块内容。", "content_format": "md_latex", "tags": [],
+             "sources_patch": [{"anchor_id": aid, "quote": quote, "relation": "defines"}],
+             "basis": "anchored"}
+    fill2 = {"content": "第二块内容。", "content_format": "md_latex", "tags": [],
+             "sources_patch": [], "basis": "synthesis"}
+
+    # 第一次：不限预算；t1 成功、t2 LLM 失败 → 缓存里留下 failed 候选
+    cfg_unlimited = {**CFG, "generate": {**CFG["generate"], "max_cost_per_chapter": 0.0}}
+    client1 = LLMClient(registry, RuntimeDB(layout.runtime_db), cfg_unlimited,
+                        overrides={"dummy": DummyProvider(
+                            [outline, fill1, LLMError("LLM 调用被拒绝 402")])})
+    r1 = generate_chapter(doc_id, "ch01", layout=layout, client=client1,
+                          config=cfg_unlimited, registry=registry, force=True)
+    assert r1["status"] == "partial", r1
+    cache = json.loads(layout.cache_file(doc_id, "ch01").read_text(encoding="utf-8"))
+    assert any(c.get("_status") == "failed" for c in cache["candidates"]), cache["candidates"]
+
+    # 第二次：极小预算续跑 → 补填在供应商调用之前被守卫拦下（调用 0 次）
+    cfg_tiny = {**CFG, "generate": {**CFG["generate"], "max_cost_per_chapter": 0.001}}
+    dummy2 = DummyProvider([fill2])
+    client2 = LLMClient(registry, RuntimeDB(layout.runtime_db), cfg_tiny,
+                        overrides={"dummy": dummy2})
+    r2 = generate_chapter(doc_id, "ch01", layout=layout, client=client2,
+                          config=cfg_tiny, registry=registry)
+    assert r2["cache_hit"] is True, r2
+    assert dummy2.calls == [], "预算守卫必须先于供应商调用拦截补填（不得真实调用）"
+    assert r2["timing"]["llm"]["calls"] == 0, r2["timing"]
+    assert r2["status"] != "complete", f"预算拦下的补填不得报 complete: {r2}"
+    assert any("成本上限" in str(f.get("reason", "")) for f in r2["failures"]), r2["failures"]
+
 

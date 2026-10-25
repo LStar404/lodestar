@@ -82,10 +82,14 @@ def reindex_doc(layout: Layout, doc_id: str, vec_dim: int | None = None,
                     "anchor_blocks", "block_links", "blocks", "anchors", "chapters", "documents"))
                 for table in tables:
                     conn.execute(f"DELETE FROM {table}")
-                try:
-                    conn.execute("INSERT INTO anchors_fts(anchors_fts) VALUES('delete-all')")
-                except sqlite3.OperationalError:
-                    pass
+                if not blocks_only:
+                    # FTS 清除必须与重建同一条件分支：blocks_only 且章节范围为空
+                    # （改名等 manifest-only 提交）也会走到这里，但该路径不 rebuild FTS——
+                    # 清了就检索变空，且 index_meta 指纹已更新，ensure_index_fresh 不会再修
+                    try:
+                        conn.execute("INSERT INTO anchors_fts(anchors_fts) VALUES('delete-all')")
+                    except sqlite3.OperationalError:
+                        pass
 
             if not blocks_only:
                 conn.execute(

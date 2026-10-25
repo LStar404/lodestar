@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type NoteBlock } from "../api/client";
 import { renderMarkdown } from "../lib/markdown";
 import { useStore } from "../state/store";
@@ -8,9 +8,31 @@ export default function BlockEditor({ block, mode }: { block: NoteBlock; mode: "
   const loadBlocks = useStore((s) => s.loadBlocks);
   const setToast = useStore((s) => s.setToast);
   const setDraft = useStore((s) => s.setDraft);
+  const clearStaleDraftOnUnmount = useStore((s) => s.clearStaleDraftOnUnmount);
   const [title, setTitle] = useState(block.title);
   const [content, setContent] = useState(block.content);
   const [error, setError] = useState<string | null>(null);
+  // 卸载清理用快照：组件内最新编辑值 vs 最近一次 props（服务端版本）。
+  // 在 render 期同步更新，保证 cleanup 读得到卸载前的最后一帧。
+  const latest = useRef({ title, content, blockTitle: block.title, blockContent: block.content });
+  latest.current = { title, content, blockTitle: block.title, blockContent: block.content };
+
+  // 卸载清理（草稿守卫 backstop）：编辑器因 key 随 revision、blocks 刷新、切书等
+  // 「非用户确认」的原因卸载时，组件内草稿已随实例消失；若这里确实还有未保存修改，
+  // 把 store 里的脏标记也清掉，避免僵尸 dirtyDraft 让之后每次切块都假确认。
+  // 正常保存/还原/受保护的切块在卸载前已清掉 draft，这里自然 no-op；
+  // React StrictMode 首次双挂载时 local==props，也不会误清。
+  useEffect(() => {
+    return () => {
+      const l = latest.current;
+      clearStaleDraftOnUnmount(
+        block.id,
+        l.title !== l.blockTitle || l.content !== l.blockContent,
+      );
+    };
+    // 只按块 id 重建：切换块时旧实例卸载才需要清理
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [block.id]);
 
   const save = async () => {
     try {

@@ -21,7 +21,8 @@ const TYPE_ICON: Record<string, string> = {
 function BlockCard({ block, selected, onSelect }: {
   block: NoteBlock;
   selected: boolean;
-  onSelect: (id: string) => void;
+  /** 返回 false = 用户在草稿保护确认里取消（未保存草稿不丢），后续副作用必须中止 */
+  onSelect: (id: string) => boolean;
 }) {
   const fetchAnchors = useStore((s) => s.fetchAnchors);
   const docId = useStore((s) => s.docId);
@@ -62,8 +63,9 @@ function BlockCard({ block, selected, onSelect }: {
     <div
       className={`block-card ${selected ? "selected" : ""}`}
       onClick={() => {
-        // 单击卡片 = 选中 + 展开阅读（⤢ 按钮保留，点击来源徽章等子控件不触发）
-        onSelect(block.id);
+        // 单击卡片 = 选中 + 展开阅读（⤢ 按钮保留，点击来源徽章等子控件不触发）；
+        // onSelect 走草稿守卫：用户取消时不得再打开放大层（Review #6）
+        if (!onSelect(block.id)) return;
         openZoom(block.id);
       }}
     >
@@ -100,7 +102,7 @@ function BlockCard({ block, selected, onSelect }: {
           title="放大阅读"
           onClick={(e) => {
             e.stopPropagation();
-            onSelect(block.id);
+            if (!onSelect(block.id)) return;
             openZoom(block.id);
           }}
         >

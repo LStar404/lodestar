@@ -5,13 +5,18 @@ import MathText from "./MathText";
 
 async function locateBlock(block: any) {
   const st = useStore.getState();
-  st.selectBlock(block.id);
+  // 草稿守卫（Review #6 残余）：切块入口统一走受保护动作。返回 false = 用户在确认框里
+  // 取消，此时选中块不变，且后面一切都不得执行——不滚动、不请求锚点、不写高亮、不切页。
+  if (!st.requestSelectBlock(block.id)) return;
   document.getElementById("block-" + block.id)?.scrollIntoView({ behavior: "smooth", block: "center" });
   // 对照 sources 原文（7.4 待审核工作流）
   const first = block.sources?.[0]?.anchor_id;
   if (first) {
     try {
       const anchor = await api.getAnchor(first);
+      // 锚点请求是异步的：等待期间用户可能又切到别的块。晚到的锚点只允许写回
+      // 「当前选中块仍是本次目标」的情况，否则会把界面跳去一个已经离开的块。
+      if (useStore.getState().selectedBlockId !== block.id) return;
       st.setHighlight(anchor);
       st.setPdfPage(anchor.page);
     } catch {
@@ -29,6 +34,17 @@ export default function ReviewQueue() {
   if (!open) return null;
 
   const confirm = async (id: string, revision: number) => {
+    // 草稿守卫（同源）：确认已修会写库并刷新列表；若正在编辑的就是这一块，
+    // revision 变化会让 BlockEditor 按 key 重挂载、未保存草稿丢失——先确认。
+    // P3-7：确认后不先清标记，只有写库+刷新成功才清（失败保留，之后切块仍会确认）。
+    const st = useStore.getState();
+    if (id === st.selectedBlockId && st.view !== "card" && st.dirtyDraft !== null) {
+      const ok =
+        typeof window !== "undefined" && typeof window.confirm === "function"
+          ? window.confirm("正在编辑的块有未保存草稿，确认后刷新将丢弃草稿，继续吗？")
+          : true;
+      if (!ok) return;
+    }
     try {
       await api.updateBlock(id, {
         status: "manually_edited",
@@ -36,6 +52,8 @@ export default function ReviewQueue() {
         message: "人工确认",
         author: "human",
       });
+      // 成功才清草稿标记（先清再刷新，避免 loadBlocks 的草稿保护再弹一次确认）
+      useStore.getState().setDraft(null);
       setToast("已确认");
       await loadBlocks();
       await setOpen(true);
