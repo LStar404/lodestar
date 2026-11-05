@@ -71,3 +71,32 @@ def test_budget_allows_many_calls_when_actual_cost_is_small(tmp_path):
                               max_tokens=4000, budget=budget)
         assert out["usage"]["in"] == 10
     assert budget._reserved < 0.001, budget._reserved
+
+
+def test_zero_usage_is_not_replaced_with_maximum_budget(tmp_path):
+    from src.core.llm import DummyProvider
+
+    client = _client(tmp_path)
+    client.overrides["prov"] = DummyProvider([
+        {"output": "", "usage": {"in": 0, "out": 0, "estimated": False}},
+        {"output": "", "usage": {"in": 0, "out": 0, "estimated": False}},
+    ])
+    budget = BudgetGuard(0.005)
+    for _ in range(2):
+        result = client.complete("fill", [{"role": "user", "content": "hi"}],
+                                 max_tokens=4000, budget=budget)
+        assert result["usage"] == {"in": 0, "out": 0, "estimated": False}
+    assert budget._reserved == 0
+    assert client.runtime.usage_total() == 0
+
+
+def test_missing_output_usage_is_labelled_estimated(tmp_path):
+    from src.core.llm import DummyProvider
+
+    client = _client(tmp_path)
+    client.overrides["prov"] = DummyProvider([
+        {"output": "text", "usage": {"in": 10, "out": None, "estimated": False}},
+    ])
+    result = client.complete("fill", [{"role": "user", "content": "hi"}], max_tokens=20)
+    assert result["usage"]["estimated"] is True
+    assert client.runtime.usage_summary()[0]["estimated_rows"] == 1

@@ -312,6 +312,17 @@ def generate_chapter(doc_id: str, chapter_id: str, *, layout: Layout | None = No
     config = config or {}
     store = DocStore(layout, doc_id)
     manifest = store.manifest()
+    from src.core.note_templates import (StyledClient, book_template,
+                                          generation_identity, generation_style)
+
+    template = book_template(layout, doc_id)
+    if template:
+        # A book owns a fixed template snapshot; later library edits do not change it.
+        manifest = {**manifest, "profile": template.get("profile", manifest.get("profile", "textbook"))}
+        config = {**config, "generate": {**(config.get("generate") or {}),
+                                          "note_template_identity": generation_identity(template)}}
+        if client is not None:
+            client = StyledClient(client, generation_style(template))
     profile = manifest.get("profile", "textbook")
     chapter = store.chapter(chapter_id)
     anchors = store.anchor_rows(chapter_id)
@@ -341,6 +352,7 @@ def generate_chapter(doc_id: str, chapter_id: str, *, layout: Layout | None = No
                 "outline_max_out": gen_cfg.get("outline_max_out", 16000),
                 "fill_max_out": gen_cfg.get("fill_max_out", 6000),
                 "prompt_version": PROMPT_VERSION,
+                **({"note_template": gen_cfg["note_template_identity"]} if template else {}),
                 **_prompt_identity(profile, gen_cfg)})
 
     report: dict[str, Any] = {

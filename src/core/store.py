@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import threading
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Iterable
 
@@ -50,7 +51,7 @@ def _clone_row(row: dict) -> dict:
     调用方就地修改 sources/links/tags/note_block_ids 污染缓存。
     """
     out = dict(row)
-    for key in ("sources", "links", "tags", "note_block_ids"):
+    for key in ("sources", "links", "tags", "note_block_ids", "bbox"):
         val = row.get(key)
         if isinstance(val, list):
             out[key] = [dict(v) if isinstance(v, dict) else v for v in val]
@@ -151,8 +152,47 @@ class DocStore:
             rows.extend(self.anchor_rows(ch))
         return rows
 
+    def _anchor_idmap(self) -> dict[str, dict]:
+        """只供内部点查：同一修订只构造一次；不得将缓存行直接交给调用方。"""
+        rev = self.data_revision()
+        with _ROW_LOCK:
+            entry = _ROW_CACHE.get(self._cache_key)
+            if entry is not None and entry[0] == rev and "anchor_idmap" in entry[1]:
+                return entry[1]["anchor_idmap"]
+        mapping = {a["anchor_id"]: a for a in self.all_anchor_rows()}
+        with _ROW_LOCK:
+            entry = _ROW_CACHE.get(self._cache_key)
+            if entry is not None and entry[0] == rev:
+                entry[1]["anchor_idmap"] = mapping
+        return mapping
+
     def anchors_by_id(self) -> dict[str, dict]:
-        return {a["anchor_id"]: a for a in self.all_anchor_rows()}
+        return {key: _clone_row(row) for key, row in self._anchor_idmap().items()}
+
+    def get_anchors(self, anchor_ids: Iterable[str]) -> tuple[int, dict[str, dict]]:
+        """按版本复用锚点索引，只复制本次需要的行；读锁保证批次来自同一版本。"""
+        with doc_lock(self.layout, self.doc_id):
+            revision = self.data_revision()
+            with _ROW_LOCK:
+                entry = _ROW_CACHE.get(self._cache_key)
+                mapping = (entry[1].get("anchor_idmap")
+                           if entry and entry[0] == revision else None)
+            if mapping is None:
+                mapping = {a["anchor_id"]: a for a in self.all_anchor_rows()}
+                with _ROW_LOCK:
+                    entry = _ROW_CACHE.get(self._cache_key)
+                    if entry and entry[0] == revision:
+                        entry[1]["anchor_idmap"] = mapping
+            return revision, {key: _clone_row(mapping[key])
+                              for key in dict.fromkeys(anchor_ids) if key in mapping}
+
+    def get_anchor(self, anchor_id: str) -> dict:
+        """单点读取复用批量读取的文档锁，只复制目标行。"""
+        _, found = self.get_anchors([anchor_id])
+        anchor = found.get(anchor_id)
+        if anchor is None:
+            raise NotFound(f"锚点不存在: {anchor_id}")
+        return anchor
 
     def block_rows(self, chapter_id: str, include_deleted: bool = False) -> list[dict]:
         rev = self.data_revision()
@@ -168,6 +208,57 @@ class DocStore:
         for ch in self.chapter_ids():
             rows.extend(self.block_rows(ch, include_deleted=include_deleted))
         return rows
+
+    def _block_catalog(self, revision: int) -> dict:
+        """调用方持有文档锁；轻量目录与检索文本在同一版本内只构建一次。"""
+        with _ROW_LOCK:
+            entry = _ROW_CACHE.get(self._cache_key)
+            catalog = entry[1].get("catalog") if entry and entry[0] == revision else None
+        if catalog is not None:
+            return catalog
+        entries, counts = [], {}
+        for row in self.all_block_rows():
+            status = row["status"]
+            counts[status] = counts.get(status, 0) + 1
+            result = {"block_id": row["id"], "chapter_id": row["chapter_id"],
+                      "type": row["type"], "title": row["title"], "status": status,
+                      "summary": (row.get("content") or "")[:120]}
+            corpus = "\n".join([row["title"], row.get("content") or "", *row.get("tags", [])])
+            entries.append((unicodedata.normalize("NFKC", corpus).casefold(), result))
+        catalog = {"entries": entries, "counts": counts}
+        with _ROW_LOCK:
+            entry = _ROW_CACHE.get(self._cache_key)
+            if entry and entry[0] == revision:
+                entry[1]["catalog"] = catalog
+        return catalog
+
+    def block_counts(self) -> dict:
+        """角标刷新只返回计数，不复制或传输整本笔记正文。"""
+        with doc_lock(self.layout, self.doc_id):
+            revision = self.data_revision()
+            catalog = self._block_catalog(revision)
+            return {"total": len(catalog["entries"]), "by_status": dict(catalog["counts"]),
+                    "data_revision": revision}
+
+    def search_blocks(self, query: str, limit: int = 8) -> list[dict]:
+        terms = unicodedata.normalize("NFKC", query).casefold().split()
+        with doc_lock(self.layout, self.doc_id):
+            revision = self.data_revision()
+            if not terms:
+                return []
+            results = []
+            for text, result in self._block_catalog(revision)["entries"]:
+                if all(term in text for term in terms):
+                    results.append(dict(result))
+                    if len(results) >= limit:
+                        break
+            return results
+
+    def block_titles(self) -> list[dict]:
+        with doc_lock(self.layout, self.doc_id):
+            catalog = self._block_catalog(self.data_revision())
+            return [{"id": row["block_id"], "title": row["title"]}
+                    for _, row in catalog["entries"]]
 
     def blocks_by_id(self, include_deleted: bool = True) -> dict[str, dict]:
         """id → 块 映射；同一 data_revision 内备忘，点查不再每次重建整表。"""
@@ -197,9 +288,12 @@ class DocStore:
         with _ROW_LOCK:
             entry = _ROW_CACHE.get(self._cache_key)
             memo = entry[1].get("idmap", {}) if entry and entry[0] == rev else {}
-            hit = memo.get(bucket, {}).get(block_id) if bucket in memo else None
+            known = bucket in memo
+            hit = memo.get(bucket, {}).get(block_id) if known else None
         if hit is not None:
             return _clone_row(hit)
+        if known:
+            raise NotFound(f"块不存在: {block_id}")
         block = self.blocks_by_id(include_deleted=include_deleted).get(block_id)
         if block is None:
             raise NotFound(f"块不存在: {block_id}")

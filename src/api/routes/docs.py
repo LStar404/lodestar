@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from src.core.errors import (ConflictError, InputError, NoteGenError,
                              NotFound, PipelineError, PriceUnknown,
                              TaskCancelled)
+from src.core.llm import operation_client
 from src.core.paths import DOC_ID_RE, FIGURE_ID_RE
 from src.core.store import DocMutation, DocStore
 from src.db import queries
@@ -342,7 +343,7 @@ def block_ai_edit(request: Request, doc_id: str, block_id: str, body: dict):
     # 实测模型回一串空格摆烂；纯文本 + 解壳兜底才是稳的
     models = (st.config.get("generate", {}).get("models", {}) or {})
     model = models.get("fill") or models.get("default")
-    resp = st.client.complete("edit", [{"role": "user", "content": prompt}], schema=None,
+    resp = operation_client(st.client).complete("edit", [{"role": "user", "content": prompt}], schema=None,
                               max_tokens=6000, temperature=0.3, model=model)
     out = resp.get("output")
     # output 形状不稳（实测真实模型）：纯文本 / {content: ...} / {md_latex: ...} 套壳都出现过
@@ -503,7 +504,7 @@ def quiz_generate(request: Request, doc_id: str, body: dict):
     try:
         # 只生成不落盘：与追加讲义 swap 共用 doc 锁写盘（生成过程不持锁，
         # LLM 调用可达分钟级；只有最终写文件需要串行化）
-        quiz = generate_quiz(st.client, store=store, chapter_ids=chapters, kinds=kinds,
+        quiz = generate_quiz(operation_client(st.client), store=store, chapter_ids=chapters, kinds=kinds,
                              count=count, difficulty=difficulty, model=model,
                              config=st.config, qbank=load_qbank(st.layout.doc_dir(doc_id)),
                              persist=False)
@@ -643,7 +644,11 @@ def share_doc(request: Request, doc_id: str, chapter_id: str | None = None):
         if p.exists():
             figures[fid] = ("data:image/png;base64,"
                             + base64.b64encode(p.read_bytes()).decode("ascii"))
+    from src.core.note_templates import book_template
+
+    presentation = book_template(st.layout, doc_id)
     return {"doc_id": doc_id, "title": manifest.get("title") or doc_id,
+            "presentation": {k: presentation.get(k) for k in ("name", "note_type", "cover")} if presentation else None,
             "filename": filename, "markdown": markdown,
             "blocks": blocks_out, "figures": figures,
             "generated_at": manifest.get("updated_at")}
@@ -739,6 +744,10 @@ def search(request: Request, doc_id: str, q: str, mode: str = "fts"):
     """检索（6.3）：mode=vec 走 sqlite-vec 语义兜底，未命中自动回落 FTS。"""
     st = state(request)
     store = DocStore(st.layout, doc_id)
+    q = q.strip()
+    if not q:
+        store.manifest()
+        return {"anchors": [], "blocks": [], "mode": mode}
     top_k = int(st.config.get("match", {}).get("top_k", 8))
     anchors: list[dict] = []
     if mode == "vec":
@@ -752,14 +761,12 @@ def search(request: Request, doc_id: str, q: str, mode: str = "fts"):
                 threshold=float(st.config.get("embedding", {}).get("threshold", 0.55)))
     if not anchors:
         anchors = queries.search_anchors(st.layout, doc_id, q, limit=top_k)
-    blocks = [b for b in store.all_block_rows()
-              if q.lower() in (b.get("title", "") + b.get("content", "")).lower()][:8]
+    blocks = store.search_blocks(q)
     return {
         "anchors": [{"anchor_id": a["anchor_id"], "page": a["page"], "content": a["content"],
                      "note_block_ids": a.get("note_block_ids", []), "match": a.get("match", "fts")}
                     for a in anchors],
-        "blocks": [{"block_id": b["id"], "type": b["type"], "title": b["title"],
-                    "summary": (b.get("content") or "")[:120], "status": b["status"]} for b in blocks],
+        "blocks": blocks,
         "mode": mode,
     }
 
@@ -784,7 +791,7 @@ def _vision_ocr_for(st):
             return None
         from src.ingest.vision_ocr import build_vision_ocr
 
-        return build_vision_ocr(st.client, cand)
+        return build_vision_ocr(operation_client(st.client), cand)
     except Exception:
         return None
 
@@ -803,6 +810,7 @@ def _build_generate_run(st, doc_id: str, chapter_id, model, resume: bool = False
 
         from src.generate.engine import generate_chapter
 
+        client = operation_client(st.client)
         store = DocStore(st.layout, doc_id)
         chapters = [chapter_id] if chapter_id else store.chapter_ids()
         # 并行分章（提速）：整本生成时多章同时跑 outline/fill，写入由引擎内
@@ -876,7 +884,7 @@ def _build_generate_run(st, doc_id: str, chapter_id, model, resume: bool = False
                             "reason": "已有完整生成记录且锚点未变化，跳过"}
             progress({"stage": "generate", "chapter_id": ch})
             try:
-                return generate_chapter(doc_id, ch, layout=st.layout, client=st.client,
+                return generate_chapter(doc_id, ch, layout=st.layout, client=client,
                                         config=st.config, registry=st.registry, model=model,
                                         merge_mode="merge", resume=resume, task_id=task_id,
                                         progress=make_progress(ch), is_cancelled=is_cancelled)

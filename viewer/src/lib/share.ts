@@ -33,6 +33,7 @@ export interface SharePayload {
   blocks: ShareBlock[];
   figures: Record<string, string>;
   generated_at?: string | null;
+  presentation?: { name: string; note_type: string; cover: { style: string; color: string; subtitle: string; image: string } } | null;
 }
 
 const FONT_RE = /url\(fonts\/([A-Za-z0-9_.-]+\.woff2)\)/g;
@@ -59,12 +60,19 @@ export async function inlineKatexCss(): Promise<string> {
         const buf = new Uint8Array(await r.arrayBuffer());
         map.set(name, "data:font/woff2;base64," + base64FromBytes(buf));
       } catch {
-        /* 取不到就退回相对路径（页面仍可读，只是公式字体退化） */
+        /* 缺失字体使用浏览器回退，不把本机相对地址写进分享页面。 */
       }
     }),
   );
-  return katexCssRaw.replace(FONT_RE, (full, name: string) =>
-    map.has(name) ? "url(" + map.get(name) + ")" : full);
+  // Keep one embedded source per face. KaTeX's .woff/.ttf fallbacks otherwise
+  // retain local URLs and trigger blocked network requests in isolated readers.
+  return katexCssRaw.replace(/@font-face\s*\{[^}]*\}/g, rule => {
+    const name = rule.match(/url\(fonts\/([A-Za-z0-9_.-]+\.woff2)\)/)?.[1];
+    if (!name) return rule;
+    const embedded = map.get(name);
+    if (!embedded) return "";
+    return rule.replace(/src:[^;}]*/, 'src:url(' + embedded + ') format("woff2")');
+  });
 }
 
 function escapeHtml(s: string): string {
@@ -82,10 +90,7 @@ export async function buildShareHtml(payload: SharePayload): Promise<string> {
   const katexCss = await inlineKatexCss();
   const parts: string[] = [];
   for (const b of payload.blocks) {
-    let html = renderMarkdown(b.content || "", payload.doc_id, {});
-    for (const [fid, dataUrl] of Object.entries(payload.figures)) {
-      html = html.split("/api/v1/docs/" + payload.doc_id + "/figures/" + fid).join(dataUrl);
-    }
+    const html = renderMarkdown(b.content || "", payload.doc_id, {}, payload.figures);
     parts.push(
       '<section class="blk">' +
         (b.title ? "<h3>" + escapeHtml(b.title) + "</h3>" : "") +
@@ -96,6 +101,13 @@ export async function buildShareHtml(payload: SharePayload): Promise<string> {
   }
   const when = payload.generated_at ? " · 生成于 " + payload.generated_at : "";
   const css = katexCss;
+  const cover = payload.presentation?.cover;
+  const color = /^#[a-fA-F0-9]{6}$/.test(cover?.color || "") ? cover!.color : "#6265ad";
+  const image = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(cover?.image || "") ? cover!.image : "";
+  const coverHtml = cover && cover.style !== "none" ? '<header style="border-radius:16px;overflow:hidden;padding:24px;color:white;background:' +
+    (cover.style === "gradient" ? 'linear-gradient(125deg,' + color + ',#172033)' : color) + '">' +
+    (cover.style === "image" && image ? '<img alt="笔记封面" style="width:100%;max-height:300px;object-fit:cover" src="' + image + '">' : '') +
+    '<p>' + escapeHtml(payload.presentation?.note_type || "") + '</p><h2>' + escapeHtml(payload.title) + '</h2><p>' + escapeHtml(cover.subtitle) + '</p></header>' : "";
   return [
     "<!doctype html>",
     '<html lang="zh"><head><meta charset="utf-8">',
@@ -118,6 +130,7 @@ export async function buildShareHtml(payload: SharePayload): Promise<string> {
     "@media (prefers-color-scheme:dark){body{background:#0d1117;color:#e6edf3}.blk{border-color:#30363d}.src{color:#9ca3af}}",
     "@media print{body{max-width:none}.blk{break-inside:avoid}}",
     "</style></head><body>",
+    coverHtml,
     "<h1>" + escapeHtml(payload.title) + "</h1>",
     '<div class="meta">note-gen 分享' + escapeHtml(when) + "</div>",
     parts.join("\n"),
@@ -174,17 +187,9 @@ export function buildNgshare(payload: SharePayload, chapterTitle: string): Ngsha
   };
 }
 
-/** 只读渲染分享里的一个块：图占位符换成分享包内嵌的 data URL。
- *
- * 分享页 docId 为空 → 渲染器给出 `/api/v1/docs//figures/<fid>`；这里按 fid 把**所有**
- * 出现的 src 都换成内嵌数据（一张图可能被正文引用多次，旧实现只换第一处）。 */
+/** Resolve figure tokens directly; package keys must never become regex source. */
 export function renderSharedBlock(content: string, figures: Record<string, string>): string {
-  let html = renderMarkdown(content || "", "", {});
-  for (const [fid, dataUrl] of Object.entries(figures ?? {})) {
-    html = html.replace(new RegExp('src="[^"]*' + fid + '"', "g"),
-                        'src="' + dataUrl + '"');
-  }
-  return html;
+  return renderMarkdown(content || "", "", {}, figures ?? {});
 }
 
 export function downloadText(filename: string, content: string, mime: string): void {

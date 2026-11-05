@@ -137,11 +137,14 @@ _CUSTOM: dict[str, BlockTypeSpec] = {}
 _TEX_ENVS = (None, "definition", "theorem", "figure", "experiment", "method", "contribution")
 
 
-def install_types(custom: list[dict] | None) -> list[str]:
-    """注入用户自定义块类型（同 id 覆盖预设）；返回非法条目 id 供上层提示。"""
-    _CUSTOM.clear()
+def parse_custom_types(custom: list[dict] | None) -> tuple[dict[str, BlockTypeSpec], list[str]]:
+    """Build a candidate registry without changing the active definitions."""
+    specs: dict[str, BlockTypeSpec] = {}
     bad: list[str] = []
     for item in custom or []:
+        if not isinstance(item, dict):
+            bad.append("?")
+            continue
         try:
             tid = str(item.get("id") or "").strip()
             if not tid or not tid.replace("_", "").isalnum():
@@ -152,7 +155,7 @@ def install_types(custom: list[dict] | None) -> list[str]:
                 policy = "required"
             rels = tuple(r for r in (item.get("allowed_relations") or SOURCE_RELATIONS)
                          if r in SOURCE_RELATIONS)
-            _CUSTOM[tid] = BlockTypeSpec(
+            specs[tid] = BlockTypeSpec(
                 tid,
                 str(item.get("icon") or "📝"),
                 str(item.get("name") or tid),
@@ -166,6 +169,14 @@ def install_types(custom: list[dict] | None) -> list[str]:
                 str(item.get("hint") or ""))
         except Exception:
             bad.append(str(item.get("id") or "?"))
+    return specs, bad
+
+
+def install_types(custom: list[dict] | None) -> list[str]:
+    """Publish complete custom definitions; readers never see a half-built registry."""
+    global _CUSTOM
+    specs, bad = parse_custom_types(custom)
+    _CUSTOM = specs
     return bad
 
 
@@ -177,14 +188,13 @@ def get_type(type_id: str) -> BlockTypeSpec:
 
 
 def active_types(profile: str = "textbook") -> list[BlockTypeSpec]:
-    specs = [s for s in REGISTRY.values()
+    effective = {**REGISTRY, **_CUSTOM}
+    specs = [s for s in effective.values()
              if profile in s.profiles or "*" in s.profiles]
-    specs += [s for s in _CUSTOM.values()
-              if profile in s.profiles or "*" in s.profiles]
     if not specs:
         # 未知/自定义 profile 名下的类型集不得为空：枚举空集 = 生成器什么都产不出，
         # 是静默哑火的悬崖；兜底回通用教材五类
-        specs = [s for s in REGISTRY.values() if "textbook" in s.profiles]
+        specs = [s for s in effective.values() if "textbook" in s.profiles or "*" in s.profiles]
     return specs
 
 

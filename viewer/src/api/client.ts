@@ -9,7 +9,7 @@ function token(): string {
   return meta ? meta.getAttribute("content") || "" : "";
 }
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = { "X-Local-Token": token() };
   let payload: BodyInit | undefined;
   if (body instanceof FormData) {
@@ -18,7 +18,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     headers["Content-Type"] = "application/json";
     payload = JSON.stringify(body);
   }
-  const resp = await fetch(url, { method, headers, body: payload });
+  const resp = await fetch(url, { method, headers, body: payload, signal });
   if (!resp.ok) {
     let body: any = {};
     try {
@@ -42,7 +42,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 }
 
 export const api = {
-  get: <T>(url: string) => request<T>("GET", url),
+  get: <T>(url: string, signal?: AbortSignal) => request<T>("GET", url, undefined, signal),
   post: <T>(url: string, body?: unknown) => request<T>("POST", url, body),
   patch: <T>(url: string, body?: unknown) => request<T>("PATCH", url, body),
   put: <T>(url: string, body?: unknown) => request<T>("PUT", url, body),
@@ -102,6 +102,8 @@ export const api = {
       + (includeDeleted ? 1 : 0) + "&limit=" + limit
       + (cursor ? "&cursor=" + encodeURIComponent(cursor) : "")
     ),
+  blockCounts: (docId: string) =>
+    api.get<{ total: number; by_status: Record<string, number>; data_revision: number }>("/api/v1/docs/" + docId + "/block-counts"),
   reviewQueue: (docId: string) =>
     api.get<{ items: NoteBlock[] }>("/api/v1/docs/" + docId + "/blocks?status=needs_review"),
   getBlock: (blockId: string) =>
@@ -117,12 +119,17 @@ export const api = {
   reorder: (docId: string, chapterId: string, body: any) =>
     api.post<{ items: NoteBlock[] }>("/api/v1/docs/" + docId + "/chapters/" + chapterId + "/reorder", body),
   getAnchor: (anchorId: string) => api.get<Anchor>("/api/v1/anchors/" + anchorId),
+  getAnchors: (docId: string, ids: string[]) =>
+    api.post<{ items: Anchor[]; missing: string[]; data_revision: number }>(
+      "/api/v1/docs/" + docId + "/anchors/batch", { ids }),
+  blockTitles: (docId: string) =>
+    api.get<{ items: { id: string; title: string }[] }>("/api/v1/docs/" + docId + "/block-titles"),
   pageBlocks: (docId: string, page: number) =>
     api.get<any[]>("/api/v1/docs/" + docId + "/pages/" + page + "/blocks"),
   match: (docId: string, body: any) => api.post<{ hits: any[] }>("/api/v1/docs/" + docId + "/match", body),
-  search: (docId: string, q: string) =>
+  search: (docId: string, q: string, signal?: AbortSignal) =>
     api.get<{ anchors: any[]; blocks: any[] }>(
-      "/api/v1/search?doc_id=" + docId + "&q=" + encodeURIComponent(q)
+      "/api/v1/search?doc_id=" + docId + "&q=" + encodeURIComponent(q), signal
     ),
   agentEdit: (url: string, body: any) => api.post<any>(url, body),
   generate: (docId: string, body: any) => api.post<{ task_id: string }>("/api/v1/docs/" + docId + "/generate", body),

@@ -1,3 +1,4 @@
+import Icon from "./Icon";
 import { useEffect, useRef, useState } from "react";
 import { api, type NoteBlock } from "../api/client";
 import { STATUS_CN, sortBlocks } from "../api/types";
@@ -51,10 +52,7 @@ export default function BlockDetailPanel() {
   const down = reorderTarget(ordered, detail?.block.id ?? "", "down");
 
   // 切块统一走草稿守卫（Review #6）：换选中块会卸载源码/预览编辑器并丢草稿
-  const goToBlock = (id: string) => {
-    if (!useStore.getState().requestSelectBlock(id)) return;
-    document.getElementById("block-" + id)?.scrollIntoView({ behavior: "smooth", block: "center" });
-  };
+  const goToBlock = (id: string) => { void useStore.getState().navigateBlock(id); };
 
   // 草稿守卫（Review #6 残余）：删除/回滚/重排/解锁会改选中块的 revision 或让它从列表
   // 消失，BlockEditor 按 key=id:revision 重挂载 → 未保存草稿丢失。先确认再发请求；
@@ -85,18 +83,13 @@ export default function BlockDetailPanel() {
     }).catch(() => {
       if (seq === detailSeq.current) setDetail(null);
     });
-    void api.listAllBlocks(docId ?? "").then((r) => {
-      if (seq !== detailSeq.current) return;
-      const map: Record<string, string> = {};
-      for (const b of r.items ?? []) map[b.id] = b.title;
-      setTitleById(map);
-    }).catch(() => undefined);
     return () => {
       detailSeq.current += 1;   // 卸载/依赖变化：之前那次请求作废
     };
   }, [selectedBlockId, blocks, docId]);
 
   useEffect(() => {
+    setPageBlocks([]);
     if (!docId || !pdfPage) return;
     let cancelled = false;
     api.pageBlocks(docId, pdfPage).then((rows) => {
@@ -105,12 +98,21 @@ export default function BlockDetailPanel() {
     return () => {
       cancelled = true;
     };
-  }, [docId, pdfPage]);
+  }, [docId, pdfPage, blocks]);
 
   useEffect(() => {
     void fetchAnchors(selectionHits.map((h: any) => h.anchor_id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionHits]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTitleById({});
+    if (docId) void api.blockTitles(docId).then(({ items }) => {
+      if (!cancelled) setTitleById(Object.fromEntries(items.map((b) => [b.id, b.title])));
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [docId, blocks]);
 
   const act = async (fn: () => Promise<any>, msg: string) => {
     try {
@@ -134,7 +136,11 @@ export default function BlockDetailPanel() {
 
   return (
     <aside className="detail-panel">
-      <h3>本页关联块（p.{pdfPage}）</h3>
+      <div className="pane-heading">
+        <div className="pane-label"><Icon name="link" /><strong>阅读索引</strong></div>
+        <span className="pane-count">P. {pdfPage}</span>
+      </div>
+      <h3>本页关联笔记 <span className="section-count">{pageBlocks.length}</span></h3>
       {pageBlocks.length === 0 && <div className="empty">本页没有关联块</div>}
       {pageBlocks.map((b) => (
         <button key={b.block_id} className="hit-block" onClick={() => goToBlock(b.block_id)}>
@@ -142,7 +148,7 @@ export default function BlockDetailPanel() {
         </button>
       ))}
 
-      <h3>选区命中</h3>
+      <h3>选区定位</h3>
       {selectionHits.length === 0 ? (
         <div className="empty">在 PDF 上选中文字可匹配关联块</div>
       ) : (
@@ -164,9 +170,9 @@ export default function BlockDetailPanel() {
         ))
       )}
 
-      <h3>块详情</h3>
+      <h3>笔记详情</h3>
       {!detail ? (
-        <div className="empty">未选中块</div>
+        <div className="empty">选中一条笔记，查看来源、关联与编辑记录。</div>
       ) : (
         <div className="detail-body">
           <div>

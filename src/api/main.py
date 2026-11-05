@@ -16,6 +16,9 @@ from .routes import blocks as blocks_routes
 from .routes import docs as docs_routes
 from .routes import system as system_routes
 from .routes.shares import router as shares_routes
+from .routes.publications import router as publications_routes
+from .routes.knowledge import router as knowledge_routes
+from .routes.templates import router as templates_routes
 from .setup_guide import router as setup_routes
 from .security import LocalSecurityMiddleware
 from .state import AppState
@@ -88,6 +91,9 @@ def create_app(root: str | Path | None = None, port: int | None = None) -> FastA
     app.include_router(system_routes.router)
     app.include_router(setup_routes)
     app.include_router(shares_routes)
+    app.include_router(publications_routes)
+    app.include_router(knowledge_routes)
+    app.include_router(templates_routes)
 
     dist = root / "viewer" / "dist"
     if dist.exists():

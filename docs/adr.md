@@ -14,3 +14,9 @@
 | D34 | Anki 导出 `.apkg`（genanki）+ CSV 回退；eval 三维度评分与基线回归告警 | 对应 11.4/10.5 交付项；卡片与 deck ID 确定性派生，重复导入即更新 | v2 |
 | D35 | 新增配置指南（`GET /api/v1/setup/status` 只读自检 + 前端六步向导，首启未就绪自动弹出）；顺带修复 `upsert_provider` 掩码回写覆盖真密钥 | 首次配置横跨 models.json 注册表/config.yaml/路由/解析器 venv 多处（D21/D31），门槛高易配错；自检复用既有状态（registry/config/parser 探测）不新增写契约，向导只调用既有 PUT models/model-routes/settings 接口，不改变行为契约；掩码值与 `mask_key` 一致即视为未改动、保留原 key（显式新值仍生效），消除 UI 回传掩码把密钥覆盖成 "****xxxx" 的风险 | 实现级 |
 | D36 | 调用路径按能力标志降级：模型 `json_schema=false` 时改用 `response_format.type=json_object`（并在提示缺 "json" 时补一条系统指令），不再恒发 json_schema | DeepSeek 等上游对 json_schema 直接回 400「This response_format type is unavailable now」；原实现只在 test_connection 的提示文案里提到能力，调用路径从不检查，导致密钥与路由配好后「生成本章」依旧失败（能力标志形同虚设，与 llm.py 文件头「能力标志驱动行为」自相矛盾）；解析侧 json_repair_loads + schema 校验已容忍非严格 JSON，降级不牺牲健壮性 | 实现级 |
+
+| D37 | 锚点和块点查复用按根目录/文档/修订隔离的 ID 映射，热查只复制目标行 | 避免点击来源时复制整本书；修订变化失效，派生 doc_map 缺失时回退 JSONL；不改提交与人工保护协议 | 已实现 |
+| D38 | 全书知识树为有容量上限的派生缓存，按原文/笔记文件变更失效 | 复用现有事实源，导图无需 LLM；显示缺章与解析失败页，不宣称完整知识覆盖 | 已实现 |
+| D39 | 模板库版本与每书应用快照分离，生成指纹包含结构指引但不含封面 | 编辑模板库不暗改已应用书籍；AI讨论只产草稿，用户保存和应用；原笔记不改写 | 已实现 |
+| D40 | 分享采用显式持久快照、随机固定 ID、修订检查、撤销记录及独立只读服务 | 长期维护同一地址，避免暴露管理令牌；本次按用户要求不部署，不提供假公网地址 | 已实现，未上线 |
+| D41 | 外部软件先采用文件交换与独立摘录箱 | 保留 Obsidian/Anki 原能力，新增 MD/MM/OPML 和粘贴摘录；不把文件互通描述为账号同步 | 已实现 |

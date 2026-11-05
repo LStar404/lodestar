@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from .errors import InputError
 
 DEFAULTS: dict[str, Any] = {
     "app": {
@@ -57,6 +60,41 @@ ENCODINGS = ("utf-8", "utf-8-sig", "gbk", "big5")
 OUTPUT_LANGUAGES = ("zh", "en", "ja")
 REASONING_EFFORTS = ("low", "medium", "high")
 THINKING_MODES = ("disabled", "enabled")
+
+
+def validate_settings_patch(patch: dict) -> None:
+    """Validate API edits before normalization, persistence or live changes."""
+    for section in ("parser", "generate", "export", "match", "history", "embedding"):
+        if section in patch and not isinstance(patch[section], dict):
+            raise InputError(f"{section} 必须是对象")
+    for section, field, choices in (
+        ("parser", "default", ("auto", "marker", "docling", "pypdf", "pymupdf")),
+        ("parser", "ocr_mode", ("auto", "force", "off")),
+        ("generate", "output_language", OUTPUT_LANGUAGES),
+        ("export", "encoding", ENCODINGS),
+    ):
+        values = patch.get(section, {})
+        if field in values:
+            value = values[field]
+            if not isinstance(value, str) or value.lower() not in choices:
+                raise InputError(f"不支持的 {section}.{field}: {value}")
+    gen = patch.get("generate", {})
+    for field in ("reasoning_effort", "thinking"):
+        if gen.get(field) is not None and not isinstance(gen[field], str):
+            raise InputError(f"generate.{field} 必须是字符串或 null")
+    for field in ("concurrency", "chapter_concurrency", "max_concurrent_requests",
+                  "outline_max_in", "fill_max_in", "outline_max_out", "fill_max_out",
+                  "quiz_max_out", "outline_batch_out", "fill_batch"):
+        if field in gen and (type(gen[field]) is not int or gen[field] < 1):
+            raise InputError(f"generate.{field} 必须是正整数")
+    for field in ("timeout", "temperature", "max_cost_per_chapter"):
+        if field not in gen:
+            continue
+        value = gen[field]
+        if (type(value) not in (int, float) or not math.isfinite(value)
+                or value < 0 or (field == "timeout" and value == 0)):
+            raise InputError(f"generate.{field} 必须是有效的"
+                             + ("正数" if field == "timeout" else "非负数"))
 
 
 def normalize_settings(cfg: dict) -> dict:

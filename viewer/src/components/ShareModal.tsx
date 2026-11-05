@@ -1,3 +1,4 @@
+import PublicationPanel from "./PublicationPanel";
 import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
@@ -12,7 +13,7 @@ import {
 } from "../lib/share";
 import { useStore } from "../state/store";
 
-type Tab = "send" | "inbox";
+type Tab = "send" | "inbox" | "links";
 
 function safeName(s: string): string {
   return (s || "note-gen-share").replace(/[\\/:*?"<>|]+/g, "_").slice(0, 80);
@@ -33,13 +34,15 @@ export default function ShareModal({ onClose }: { onClose: () => void }) {
   const [viewing, setViewing] = useState<any | null>(null);
 
   useEffect(() => {
-    if (!docId) return;
+    let cancelled = false;
+    if (!docId) { setData(null); return; }
     setData(null);
     setErr("");
     void api
       .shareDoc(docId, scope === "chapter" ? chapterId : null)
-      .then((d: SharePayload) => setData(d))
-      .catch((e: any) => setErr(String(e?.message ?? e)));
+      .then((d: SharePayload) => { if (!cancelled) setData(d); })
+      .catch((e: any) => { if (!cancelled) setErr(String(e?.message ?? e)); });
+    return () => { cancelled = true; };
   }, [docId, chapterId, scope]);
 
   const loadShares = () =>
@@ -87,6 +90,7 @@ export default function ShareModal({ onClose }: { onClose: () => void }) {
           <button className={tab === "send" ? "active" : ""} onClick={() => setTab("send")}>
             发出
           </button>
+          <button className={tab === "links" ? "active" : ""} onClick={() => setTab("links")}>长期链接</button>
           <button className={tab === "inbox" ? "active" : ""} onClick={() => setTab("inbox")}>
             收件箱{shares.length ? "（" + shares.length + "）" : ""}
           </button>
@@ -171,6 +175,12 @@ export default function ShareModal({ onClose }: { onClose: () => void }) {
             )}
           </>
         )}
+
+        {tab === "links" && <>
+          <label>分享范围 <select value={scope} onChange={e => setScope(e.target.value as "book" | "chapter")}><option value="chapter">当前章节</option><option value="book">整本教材</option></select></label>
+          {err && <p role="alert">{err}</p>}
+          <PublicationPanel data={data} chapterId={scope === "chapter" ? chapterId : null} />
+        </>}
 
         {tab === "inbox" && (
           <>

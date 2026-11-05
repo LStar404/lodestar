@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import Icon from "./Icon";
+import ActionMenu from "./ActionMenu";
+import GlobalSearch from "./GlobalSearch";
+import { lazy, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useStore } from "../state/store";
-import ShareModal from "./ShareModal";
+import DeferredPanel from "./DeferredPanel";
+const KnowledgePanel = lazy(() => import("./KnowledgePanel"));
+const TemplateStudio = lazy(() => import("./TemplateStudio"));
+const ShareModal = lazy(() => import("./ShareModal"));
 
 // 任务进度可读化（9.2 进度透传）：提纲 2/6 批、填充 3/20、生成 ch01
 function progressText(p: any): string {
@@ -83,8 +89,10 @@ export default function Toolbar() {
   const reviewCount = useStore((s) => s.reviewCount);
   const refreshReviewCount = useStore((s) => s.refreshReviewCount);
   const setToast = useStore((s) => s.setToast);
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any | null>(null);
+  // 阅读布局开关从原来的独立「阅读工作台」横条收进工具栏第二行：那一整条
+  // 只为放一个开关就占了 48px，头部一压就是两行品牌区的高度。
+  const focusMode = useStore((s) => s.readingMode === "focus");
+  const setReadingMode = useStore((s) => s.setReadingMode);
   const [tasks, setTasks] = useState<any[]>([]);
   const timersRef = useRef<Set<number>>(new Set());
   const [dragOver, setDragOver] = useState(false);
@@ -335,15 +343,6 @@ export default function Toolbar() {
     return window.confirm("当前块有未保存草稿，切换将丢弃草稿，继续吗？");
   };
 
-  const runSearch = async () => {
-    if (!docId || !query.trim()) return;
-    try {
-      setResults(await api.search(docId, query.trim()));
-    } catch (e: any) {
-      setToast("检索失败：" + e.message);
-    }
-  };
-
   const doExport = async (format: string, scope: "book" | "chapter") => {
     if (!docId) return;
     if (scope === "chapter" && !chapterId) {
@@ -443,6 +442,8 @@ export default function Toolbar() {
   const [exportOpen, setExportOpen] = useState(false);
   // 分享：复制 Markdown / 下载离线单文件 HTML（公式字体与插图内嵌）
   const [shareOpen, setShareOpen] = useState(false);
+  const [knowledgeOpen, setKnowledgeOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [expFormat, setExpFormat] = useState("md");
   const [expScope, setExpScope] = useState<"book" | "chapter">("book");
   // 导出完成提示：文件在哪 + 一键打开文件夹
@@ -544,229 +545,229 @@ export default function Toolbar() {
 
   return (
     <>
-    <header className="toolbar">
-      <div className="brand">
-        <span className="logo">📒</span>
-        <span>note-gen</span>
-      </div>
-      <select
-        className="theme-select"
-        value={theme}
-        onChange={(e) => applyTheme(e.target.value)}
-        title="界面配色"
-      >
-        {THEMES.map(([k, label]) => (
-          <option key={k} value={k}>{label}</option>
-        ))}
-      </select>
-      <select
-        value={docId ?? ""}
-        onChange={(e) => {
-          if (!guardDirty()) return;
-          void selectDoc(e.target.value);
-        }}
-      >
-        <option value="">— 选择教材 —</option>
-        {docs.map((d) => (
-          <option key={d.doc_id} value={d.doc_id}>{d.title}</option>
-        ))}
-      </select>
-      {docId && (
-        <button
-          title="给这本教材改名（只改显示名称，不影响内容）"
-          onClick={() => {
-            setRenameText(manifest?.title ?? docs.find((d) => d.doc_id === docId)?.title ?? "");
-            setRenameOpen(true);
-          }}
-        >
-          改名
-        </button>
-      )}
+      <header className="toolbar">
+        <div className="toolbar-top">
+          <div className="brand">
+            <span className="logo"><Icon name="book" size={17} /></span>
+            <span className="brand-copy"><strong>note-gen<span className="brand-dot">.</span></strong><small>让阅读，成为知识</small></span>
+          </div>
+          <GlobalSearch />
 
-      <select
-        value={chapterId ?? ""}
-        onChange={(e) => {
-          if (!guardDirty()) return;
-          void selectChapter(e.target.value);
-        }}
-      >
-        {(manifest?.chapters ?? []).map((c: any) => (
-          <option key={c.chapter_id} value={c.chapter_id}>{c.title}</option>
-        ))}
-      </select>
-
-      <label className="file-button primary" title="导入 PDF（数字版/扫描版）或 PPTX 讲义">
-        导入讲义
-        <input type="file" accept="application/pdf,.pptx" hidden
-               onChange={(e) => void importPdf(e.target.files?.[0] ?? null)} />
-      </label>
-      {docId && (
-        <label className="file-button"
-               title="把新的讲义 PDF 追加到本教材尾部：已有笔记、生成记录全部保留，新页带来新章节">
-          追加讲义
-          <input type="file" accept="application/pdf" hidden
-                 onChange={(e) => void appendLecture(e.target.files?.[0] ?? null)} />
-        </label>
-      )}
-
-      {docId && (
-        <button
-          className="danger"
-          title="删除该教材（移入回收站 data/.trash，可找回）"
-          onClick={() => {
-            const doc = docs.find((d) => d.doc_id === docId);
-            const chapters = doc?.chapters?.length ?? 0;
-            const ok = window.confirm(
-              "确认删除教材《" + (doc?.title ?? docId) + "》？\n\n" +
-              "· 将删除其全部笔记块、锚点、历史与图资源（约 " + chapters + " 章）\n" +
-              "· 移入回收站 data/.trash，可在磁盘上找回\n" +
-              "· 此操作会立即从列表中移除该教材" +
-              // 草稿守卫（Review #6 残余）：删书会卸载编辑器，草稿只存在内存里，删了找不回
-              (dirtyDraft !== null ? "\n· 当前块有未保存草稿，删除后无法找回" : "")
-            );
-            if (!ok) return;
-            void api
-              .deleteDoc(docId)
-              .then(async (resp: any) => {
-                setToast("已删除《" + (doc?.title ?? docId) + "》，已移入回收站（data/.trash 可找回）");
-                // 文档已删：选中块随之失效、编辑器卸载。草稿标记也要一起清掉，
-                // 否则残留的 dirtyDraft 会让之后每次切块都误报「有未保存草稿」。
-                useStore.setState({ docId: null, manifest: null, chapterId: null,
-                                    blocks: [], selectedBlockId: null,
-                                    dirtyDraft: null, zoomBlockId: null });
-                await loadDocs();
-                // 删除反馈（结果对话框）：删了什么、删到哪、能否找回，一次说清
-                setDeleted({
-                  title: doc?.title ?? docId,
-                  removed: resp?.removed ?? {},
-                  trashedTo: resp?.trashed_to ?? "data/.trash",
-                });
-              })
-              .catch((e: any) => setToast("删除失败：" + e.message));
-          }}
-        >
-          删除教材
-        </button>
-      )}
-
-      {docId && (
-        <button
-          title="重建导入：重新解析 PDF 并重新识别章节（无需重新上传）。仅当文档没有笔记块时可用"
-          onClick={() => {
-            const doc = docs.find((d) => d.doc_id === docId);
-            const ok = window.confirm(
-              "重建导入《" + (doc?.title ?? docId) + "》？\n\n" +
-              "· 重新解析 PDF（拾取最新解析器，如中文保真抽取）\n" +
-              "· 重新识别章节（拾取最新分章规则）\n" +
-              "· 重新生成锚点与索引；需要文档当前没有笔记块\n" +
-              "· PDF 不变，无需重新上传"
-            );
-            if (!ok) return;
-            void api
-              .rebuildDoc(docId)
-              .then((r: any) => {
-                track(r.task_id, "import");
-                setToast("重建任务已启动：" + r.task_id);
-              })
-              .catch((e: any) => setToast("重建失败：" + e.message));
-          }}
-        >
-          重建导入
-        </button>
-      )}
-
-      <input
-        className="gen-name"
-        value={genName}
-        onChange={(e) => setGenName(e.target.value)}
-        placeholder="任务名（可选）"
-        title="给这次生成起个名字（如「期末复习重点章」）；留空则自动用「书名 · 章节名」"
-        style={{ width: 130 }}
-      />
-      <button onClick={doGenerate}>生成本章</button>
-      <button
-        onClick={() => setBookOpen(true)}
-        title="一键生成全书：可跳过已生成章节；已有笔记不丢；可暂停/续跑"
-      >
-        全书生成
-      </button>
-      <button className="primary" onClick={() => setExportOpen(true)}
-              title="导出笔记：Markdown / LaTeX / Obsidian / Anki，可选整本或当前章节">
-        导出
-      </button>
-      <button onClick={() => setShareOpen(true)}
-              title="分享：复制 Markdown 或下载单文件 HTML（公式字体与插图内嵌，离线可看）">
-        分享
-      </button>
-      <button onClick={() => void openQuiz()}
-              title="AI 出题：按笔记出练习题（可上传往年题/课后习题定向风格，期末备考）">
-        AI 出题
-      </button>
-      <button onClick={() => void openReview(true)} title="审核 AI 生成的笔记块（needs_review）">
-        待审核
-        {reviewCount > 0 && (
-          <span className="count-badge">{reviewCount > 99 ? "99+" : reviewCount}</span>
-        )}
-      </button>
-      <button onClick={() => void openRecords()} title="查看各章生成的时间、模型与结果">生成记录</button>
-      {docId && (
-        <button
-          title="刷新图资源：从 PDF 提取插图并修复笔记中的图片引用（无需重新导入）"
-          onClick={() => {
-            setToast("正在刷新图资源…");
-            void api
-              .refreshFigures(docId)
-              .then((r) => {
-                setToast("图资源已刷新：登记 " + r.figures + " 张图，修复 " + r.patched_blocks + " 个块的引用");
-                void useStore.getState().loadBlocks();
-              })
-              .catch((e: any) => setToast("图资源刷新失败：" + e.message));
-          }}
-        >
-          刷新图资源
-        </button>
-      )}
-      <button onClick={() => useStore.setState({ onboardOpen: true })}
-              title="使用引导：认识产品、界面导览、三分钟上手">使用引导</button>
-      <button onClick={() => openSetup(true)} title="配置指南：环境自检与首次使用引导">配置指南</button>
-      <button onClick={() => openSettings(true)}>设置</button>
-
-      <div className="search-box">
-        <input
-          id="global-search"
-          placeholder="全局检索（/）"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && void runSearch()}
-        />
-        {results && (
-          <div className="search-results">
-            <div className="search-group">
-              <b>锚点</b>
-              {results.anchors.map((a: any) => (
-                <div key={a.anchor_id} className="search-item">p.{a.page} {a.content.slice(0, 40)}</div>
+          <div className="toolbar-utilities">
+            <select
+              className="theme-select" aria-label="界面配色"
+              value={theme}
+              onChange={(e) => applyTheme(e.target.value)}
+              title="界面配色"
+            >
+              {THEMES.map(([k,label]) => (
+                <option key={k} value={k}>{label}</option>
               ))}
-            </div>
-            <div className="search-group">
-              <b>块</b>
-              {results.blocks.map((b: any) => (
-                <div
-                  key={b.block_id}
-                  className="search-item"
+            </select>
+            <ActionMenu label="帮助">
+              <button onClick={() => useStore.setState({ onboardOpen: true })}
+                title="使用引导：认识产品、界面导览、三分钟上手">使用引导</button>
+              <button onClick={() => openSetup(true)} title="配置指南：环境自检与首次使用引导">配置指南</button>
+            </ActionMenu>
+            <button className="settings-button" title="设置" onClick={() => openSettings(true)}><Icon name="settings" size={17} />设置</button>
+          </div>
+        </div>
+        <div className="workspace-actions">
+          <div className="document-context">
+            <Icon name="book" size={17} />
+            <select className="document-select" aria-label="选择教材"
+              value={docId??""}
+              onChange={(e) => {
+                if(!guardDirty()) return;
+                void selectDoc(e.target.value);
+              }}
+            >
+              <option value="">— 选择教材 —</option>
+              {docs.map((d) => (
+                <option key={d.doc_id} value={d.doc_id}>{d.title}</option>
+              ))}
+            </select>
+            <span className="context-divider">/</span>
+            <select className="chapter-select" aria-label="选择章节"
+              value={chapterId??""}
+              onChange={(e) => {
+                if(!guardDirty()) return;
+                void selectChapter(e.target.value);
+              }}
+            >
+              {(manifest?.chapters??[]).map((c: any) => (
+                <option key={c.chapter_id} value={c.chapter_id}>{c.title}</option>
+              ))}
+            </select>
+
+            <label className="file-button import-button" title="导入 PDF（数字版/扫描版）或 PPTX 讲义">
+              <Icon name="upload" size={16} />导入讲义
+              <input type="file" accept="application/pdf,.pptx" hidden
+                onChange={(e) => void importPdf(e.target.files?.[0]??null)} />
+            </label>
+            <ActionMenu label="教材管理">
+              {docId&&(
+                <button
+                  title="给这本教材改名（只改显示名称，不影响内容）"
                   onClick={() => {
-                    // 切块入口（Review #6 残余）：检索结果同样走受保护动作；
-                    // 用户在草稿确认里取消时选中块不变，这里也不做任何后续副作用
-                    useStore.getState().requestSelectBlock(b.block_id);
+                    setRenameText(manifest?.title??docs.find((d) => d.doc_id===docId)?.title??"");
+                    setRenameOpen(true);
                   }}
                 >
-                  {b.title}
-                </div>
-              ))}
+                  改名
+                </button>
+              )}
+
+              {docId&&(
+                <label className="file-button"
+                  title="把新的讲义 PDF 追加到本教材尾部：已有笔记、生成记录全部保留，新页带来新章节">
+                  追加讲义
+                  <input type="file" accept="application/pdf" hidden
+                    onChange={(e) => void appendLecture(e.target.files?.[0]??null)} />
+                </label>
+              )}
+
+              {docId&&(
+                <button
+                  className="danger"
+                  title="删除该教材（移入回收站 data/.trash，可找回）"
+                  onClick={() => {
+                    const doc=docs.find((d) => d.doc_id===docId);
+                    const chapters=doc?.chapters?.length??0;
+                    const ok=window.confirm(
+                      "确认删除教材《"+(doc?.title??docId)+"》？\n\n"+
+                      "· 将删除其全部笔记块、锚点、历史与图资源（约 "+chapters+" 章）\n"+
+                      "· 移入回收站 data/.trash，可在磁盘上找回\n"+
+                      "· 此操作会立即从列表中移除该教材"+
+                      // 草稿守卫（Review #6 残余）：删书会卸载编辑器，草稿只存在内存里，删了找不回
+                      (dirtyDraft!==null? "\n· 当前块有未保存草稿，删除后无法找回":"")
+                    );
+                    if(!ok) return;
+                    void api
+                      .deleteDoc(docId)
+                      .then(async (resp: any) => {
+                        setToast("已删除《"+(doc?.title??docId)+"》，已移入回收站（data/.trash 可找回）");
+                        // 文档已删：选中块随之失效、编辑器卸载。草稿标记也要一起清掉，
+                        // 否则残留的 dirtyDraft 会让之后每次切块都误报「有未保存草稿」。
+                        useStore.setState({
+                          docId: null,manifest: null,chapterId: null,
+                          blocks: [],selectedBlockId: null,
+                          dirtyDraft: null,zoomBlockId: null
+                        });
+                        await loadDocs();
+                        // 删除反馈（结果对话框）：删了什么、删到哪、能否找回，一次说清
+                        setDeleted({
+                          title: doc?.title??docId,
+                          removed: resp?.removed??{},
+                          trashedTo: resp?.trashed_to??"data/.trash",
+                        });
+                      })
+                      .catch((e: any) => setToast("删除失败："+e.message));
+                  }}
+                >
+                  删除教材
+                </button>
+              )}
+
+              {docId&&(
+                <button
+                  title="重建导入：重新解析 PDF 并重新识别章节（无需重新上传）。仅当文档没有笔记块时可用"
+                  onClick={() => {
+                    const doc=docs.find((d) => d.doc_id===docId);
+                    const ok=window.confirm(
+                      "重建导入《"+(doc?.title??docId)+"》？\n\n"+
+                      "· 重新解析 PDF（拾取最新解析器，如中文保真抽取）\n"+
+                      "· 重新识别章节（拾取最新分章规则）\n"+
+                      "· 重新生成锚点与索引；需要文档当前没有笔记块\n"+
+                      "· PDF 不变，无需重新上传"
+                    );
+                    if(!ok) return;
+                    void api
+                      .rebuildDoc(docId)
+                      .then((r: any) => {
+                        track(r.task_id,"import");
+                        setToast("重建任务已启动："+r.task_id);
+                      })
+                      .catch((e: any) => setToast("重建失败："+e.message));
+                  }}
+                >
+                  重建导入
+                </button>
+              )}
+
+              {docId&&(
+                <button
+                  title="刷新图资源：从 PDF 提取插图并修复笔记中的图片引用（无需重新导入）"
+                  onClick={() => {
+                    setToast("正在刷新图资源…");
+                    void api
+                      .refreshFigures(docId)
+                      .then((r) => {
+                        setToast("图资源已刷新：登记 "+r.figures+" 张图，修复 "+r.patched_blocks+" 个块的引用");
+                        void useStore.getState().loadBlocks();
+                      })
+                      .catch((e: any) => setToast("图资源刷新失败："+e.message));
+                  }}
+                >
+                  刷新图资源
+                </button>
+              )}
+              {!docId&&<p className="menu-hint">选择教材后，可追加讲义或管理内容。</p>}
+            </ActionMenu>
+          </div>
+          <div className="primary-actions">
+            <button className="primary generate-button" onClick={doGenerate}><Icon name="spark" size={16} />生成本章</button>
+            <ActionMenu label="学习工具">
+              <span className="menu-heading">生成与复习</span>
+              <input
+                className="gen-name"
+                value={genName}
+                onChange={(e) => setGenName(e.target.value)}
+                placeholder="任务名（可选）"
+                title="给这次生成起个名字（如「期末复习重点章」）；留空则自动用「书名 · 章节名」"
+                aria-label="生成任务名称"
+              />
+              <button
+                onClick={() => setBookOpen(true)}
+                title="一键生成全书：可跳过已生成章节；已有笔记不丢；可暂停/续跑"
+              >
+                全书生成
+              </button>
+              <button onClick={() => void openQuiz()}
+                title="AI 出题：按笔记出练习题（可上传往年题/课后习题定向风格，期末备考）">
+                AI 出题
+              </button>
+              <button onClick={() => void openRecords()} title="查看各章生成的时间、模型与结果">生成记录</button>
+            </ActionMenu>
+            <button onClick={() => void openReview(true)} title="审核 AI 生成的笔记块（needs_review）">
+              待审核
+              {reviewCount>0&&(
+                <span className="count-badge">{reviewCount>99? "99+":reviewCount}</span>
+              )}
+            </button>
+            <button className="export-button" onClick={() => setExportOpen(true)}
+              title="导出笔记：Markdown / LaTeX / Obsidian / Anki，可选整本或当前章节">
+              <Icon name="export" size={16} />导出
+            </button>
+            <button onClick={() => setKnowledgeOpen(true)}>全书导图 · 软件联动</button>
+            <button onClick={() => setTemplatesOpen(true)}>模板工作室</button>
+            <button onClick={() => setShareOpen(true)}
+              title="分享：复制 Markdown 或下载单文件 HTML（公式字体与插图内嵌，离线可看）">
+              <Icon name="share" size={16} />分享
+            </button>
+            <span className="context-divider">|</span>
+            <div className="layout-switch" role="group" aria-label="阅读布局">
+              <button className={!focusMode ? "active" : ""} aria-pressed={!focusMode}
+                title="左边教材原文、中间笔记、右边阅读索引三栏对照" onClick={() => setReadingMode("split")}>
+                <Icon name="book" size={13} />对照阅读
+              </button>
+              <button className={focusMode ? "active" : ""} aria-pressed={focusMode}
+                title="只留笔记一栏，宽度居中" onClick={() => setReadingMode("focus")}>
+                <Icon name="notes" size={13} />专注笔记
+              </button>
             </div>
           </div>
-        )}
-      </div>
-
+        </div>
       {tasks.length > 0 && (
         <div className="task-tray">
           {tasks.map((t) => (
@@ -1129,7 +1130,9 @@ export default function Toolbar() {
           </div>
         </div>
       )}
-      {shareOpen && <ShareModal onClose={() => setShareOpen(false)} />}
+      {knowledgeOpen && <DeferredPanel onClose={() => setKnowledgeOpen(false)}><KnowledgePanel onClose={() => setKnowledgeOpen(false)} /></DeferredPanel>}
+      {templatesOpen && <DeferredPanel onClose={() => setTemplatesOpen(false)}><TemplateStudio onClose={() => setTemplatesOpen(false)} /></DeferredPanel>}
+      {shareOpen && <DeferredPanel onClose={() => setShareOpen(false)}><ShareModal onClose={() => setShareOpen(false)} /></DeferredPanel>}
       {exportOpen && (
         <div className="modal-mask" onClick={() => setExportOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>

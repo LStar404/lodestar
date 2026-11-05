@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, useEffect, useRef, useState } from "react";
 import { api } from "./api/client";
 import Toolbar from "./components/Toolbar";
 import PdfPane from "./pdf/PdfPane";
@@ -7,10 +7,13 @@ import BlockDetailPanel from "./components/BlockDetailPanel";
 import BlockActionModals from "./components/BlockActionModals";
 import OnboardingWizard from "./components/OnboardingWizard";
 import NoteZoom from "./components/NoteZoom";
-import SettingsPanel from "./components/SettingsPanel";
-import SetupGuide from "./components/SetupGuide";
+import DeferredPanel from "./components/DeferredPanel";
+import Icon from "./components/Icon";
 import ReviewQueue from "./components/ReviewQueue";
 import { useStore } from "./state/store";
+
+const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
+const SetupGuide = lazy(() => import("./components/SetupGuide"));
 
 // 三栏初始列宽（px）：随窗口宽度给个合理默认
 function initialWidths(): [number, number] {
@@ -26,6 +29,12 @@ function initialWidths(): [number, number] {
 }
 
 export default function App() {
+  const focusMode = useStore((s) => s.readingMode === "focus");
+  // 阅读布局切换走 store 的 setReadingMode（与 Toolbar 同一状态源）；
+  // 曾误写成不存在的 setFocusMode，tsc 报 TS2552、npm run build 直接失败
+  const setReadingMode = useStore((s) => s.setReadingMode);
+  const settingsOpen = useStore((s) => s.settingsOpen);
+  const setupOpen = useStore((s) => s.setupOpen);
   // 主题：跟随 localStorage，首次进入用浅色
   useEffect(() => {
     const saved = localStorage.getItem("note-gen-theme") || "light";
@@ -40,17 +49,28 @@ export default function App() {
   }, [widths]);
   // 把宽度夹到 [MIN, 可用上限]：上限 = 容器宽 - 其他两栏最小宽 - 两个拖拽把手
   const clampWidths = (w: [number, number]): [number, number] => {
-    const total = colsRef.current?.getBoundingClientRect().width ?? window.innerWidth - 36;
+    const cols = colsRef.current;
+    const style = cols ? window.getComputedStyle(cols) : null;
+    const padding = style ? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) : 48;
+    const total = (cols?.clientWidth ?? window.innerWidth) - padding;
     const MIN = 180;                       // 每栏最小宽度
-    const RESERVED = 2 * 12 + 2 * MIN;     // 两个 splitter + 第三栏最小宽
-    const max0 = Math.max(MIN, total - w[1] - RESERVED);
-    const max1 = Math.max(MIN, total - w[0] - RESERVED);
-    return [Math.min(Math.max(w[0], MIN), max0), Math.min(Math.max(w[1], MIN), max1)];
+    const available = total - 2 * 12;     // 两个 splitter
+    const first = Math.max(MIN, Math.min(w[0], available - 2 * MIN));
+    const second = Math.max(MIN, Math.min(w[1], available - first - MIN));
+    return [first, second];
   };
 
   // 窗口缩小时收回被挤超界的栏宽，避免横向溢出
   useEffect(() => {
-    const onResize = () => setWidths((w) => clampWidths(w));
+    // 窄屏用纵向布局，不把桌面列宽压缩后持久化。
+    let previousWidth = window.innerWidth > 1100 ? window.innerWidth : 0;
+    const onResize = () => {
+      if (window.innerWidth <= 1100) return;
+      const ratio = previousWidth ? window.innerWidth / previousWidth : 1;
+      setWidths((w) => clampWidths([w[0] * ratio, w[1] * ratio]));
+      previousWidth = window.innerWidth;
+    };
+    onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -61,9 +81,9 @@ export default function App() {
     const move = (ev: PointerEvent) => {
       const rect = colsRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const x = ev.clientX - rect.left;
+      const x = ev.clientX - rect.left - parseFloat(window.getComputedStyle(colsRef.current!).paddingLeft);
       setWidths(([w0, w1]) =>
-        idx === 0 ? clampWidths([x, w1]) : clampWidths([w0, x - w0])
+        idx === 0 ? clampWidths([x, w1]) : clampWidths([w0, x - w0 - 12])
       );
     };
     const up = () => {
@@ -169,25 +189,32 @@ export default function App() {
   }, [dirtyDraft]);
 
   return (
-    <div className="app">
+    <div className={"app" + (focusMode ? " focus-mode" : "")}>
       <Toolbar />
+      <div className="reading-mode-bar">
+        <div className="reading-mode-label"><span className="workspace-dot" />阅读工作台<span className="reading-mode-caption">把知识，慢慢读懂</span></div>
+        <div className="layout-switch" aria-label="阅读布局">
+          <button className={!focusMode ? "active" : ""} aria-pressed={!focusMode} onClick={() => setReadingMode("split")}><Icon name="book" size={14} />对照阅读</button>
+          <button className={focusMode ? "active" : ""} aria-pressed={focusMode} onClick={() => setReadingMode("focus")}><Icon name="notes" size={14} />专注笔记</button>
+        </div>
+      </div>
       <main className="columns" ref={colsRef}>
-        <div className="col" style={{ flex: "0 0 " + widths[0] + "px" }}>
+        <div className="col col-source" style={{ flex: "0 0 " + widths[0] + "px" }}>
           <PdfPane />
         </div>
         <div className="splitter" title="拖动调节栏宽" onPointerDown={startResize(0)} />
-        <div className="col" style={{ flex: "0 0 " + widths[1] + "px" }}>
+        <div className="col col-notes" style={{ flex: "0 0 " + widths[1] + "px" }}>
           <NotesPane />
         </div>
         <div className="splitter" title="拖动调节栏宽" onPointerDown={startResize(1)} />
-        <div className="col" style={{ flex: "1 1 0" }}>
+        <div className="col col-details" style={{ flex: "1 1 0" }}>
           <BlockDetailPanel />
         </div>
       </main>
       <NoteZoom />
       <BlockActionModals />
-      <SettingsPanel />
-      <SetupGuide />
+      {settingsOpen && <DeferredPanel onClose={() => openSettings(false)}><SettingsPanel /></DeferredPanel>}
+      {setupOpen && <DeferredPanel onClose={() => useStore.getState().openSetup(false)}><SetupGuide /></DeferredPanel>}
       <OnboardingWizard />
       <ReviewQueue />
       {toast && <div className="toast">{toast}</div>}

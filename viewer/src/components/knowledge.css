@@ -1,0 +1,55 @@
+.knowledge-panel { width: min(1120px, 96vw) !important; max-width: 1120px !important; max-height: 91vh; overflow: auto; }
+.knowledge-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.knowledge-header small { letter-spacing: .16em; font-size: 10px; color: var(--muted); }
+.knowledge-header h2 { margin: 7px 0 16px; }
+.knowledge-tabs, .knowledge-actions, .knowledge-sources { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.knowledge-tabs { border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+.knowledge-tabs [aria-selected=true] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.knowledge-overview { margin: 22px 0; }
+.knowledge-overview h3 { font-size: 22px; margin-bottom: 8px; }
+.knowledge-overview p { margin: 8px 0; color: var(--text-2); }
+.knowledge-panel small { color: var(--muted); }
+.knowledge-actions { margin: 14px 0; }
+.knowledge-actions > input { min-width: 180px; flex: 1; }
+.knowledge-tree { display: flex; align-items: flex-start; gap: 28px; margin: 24px 0 12px; }
+.knowledge-root { position: sticky; top: 0; width: 160px; flex-shrink: 0; background: var(--accent); color: white; padding: 20px 14px; border-radius: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.knowledge-branches { border-left: 2px solid var(--border-strong); padding-left: 20px; flex: 1; min-width: 0; }
+.knowledge-chapter { border: 1px solid var(--border); border-radius: 11px; margin-bottom: 14px; position: relative; background: var(--panel-2); }
+.knowledge-chapter::before { position: absolute; content: ""; left: -22px; top: 25px; width: 20px; border-top: 2px solid var(--border-strong); }
+.knowledge-chapter > summary { padding: 14px; cursor: pointer; }
+.knowledge-chapter > summary span { font-size: 12px; display: inline-block; color: var(--muted); margin-left: 10px; }
+.knowledge-chapter em { display: inline-block; font-size: 11px; font-style: normal; color: var(--warn); margin-left: 8px; }
+.knowledge-group { margin: 0 14px 12px; padding-left: 12px; border-left: 2px solid var(--accent); }
+.knowledge-group > summary { cursor: pointer; color: var(--accent); padding: 8px 0; font-weight: 600; }
+.knowledge-group > summary span { margin-left: 8px; font-size: 12px; color: var(--muted); }
+.knowledge-notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin: 8px 0; }
+.knowledge-note { border: 1px solid var(--border); border-radius: 9px; padding: 12px; background: var(--panel); min-width: 0; }
+.knowledge-note-title { border: 0 !important; padding: 0 !important; background: transparent !important; text-align: left; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.knowledge-note p { font-size: 12px; line-height: 1.65; color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.knowledge-sources button { font-size: 11px; padding: 3px 7px; color: var(--accent); }
+.knowledge-error { color: var(--danger); background: var(--danger-soft); padding: 12px; border-radius: 8px; }
+.knowledge-message { color: var(--ok); background: var(--ok-soft); padding: 12px; border-radius: 8px; }
+.knowledge-warning { color: var(--warn); margin: 10px 14px; font-size: 12px; }
+.knowledge-empty { padding: 15px; color: var(--muted); }
+.knowledge-exchange section { padding: 16px 0; border-bottom: 1px solid var(--border); }
+.knowledge-exchange section > p { color: var(--text-2); line-height: 1.7; }
+.knowledge-export-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.knowledge-export-grid button { display: flex; flex-direction: column; gap: 7px; text-align: left; padding: 16px; }
+.knowledge-note-hint { font-size: 12px; }
+.knowledge-exchange label { display: flex; flex-direction: column; gap: 7px; font-size: 13px; margin: 12px 0; }
+.knowledge-form-row { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; }
+.knowledge-panel input, .knowledge-panel textarea, .knowledge-panel select { box-sizing: border-box; max-width: 100%; }
+.knowledge-panel textarea { resize: vertical; }
+.knowledge-file input { font-size: 12px; }
+.knowledge-inbox { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.knowledge-inbox button { text-align: left; padding: 12px; display: flex; flex-direction: column; gap: 6px; overflow-wrap: anywhere; }
+.knowledge-clipping { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; margin-top: 16px; padding: 16px; }
+.knowledge-clipping pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 350px; overflow: auto; font: inherit; line-height: 1.8; }
+@media (max-width: 720px) {
+  .knowledge-tree { flex-direction: column; gap: 14px; }
+  .knowledge-root { position: static; width: auto; }
+  .knowledge-branches { width: calc(100% - 22px); }
+  .knowledge-export-grid, .knowledge-form-row { grid-template-columns: 1fr; }
+  .knowledge-notes { grid-template-columns: 1fr; }
+  .knowledge-header h2 { font-size: 20px; }
+}

@@ -54,6 +54,20 @@ def _text(value, *, limit: int, what: str) -> str:
         raise InputError(f"分享包字段不合法: {what} 必须是字符串")
     if len(value) > limit:
         raise InputError(f"分享包字段超限: {what} 超过 {limit} 字符")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise InputError(f"分享包字段不合法: {what} 包含无效 Unicode") from None
+    return value
+
+
+def _page(value, *, what: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and re.fullmatch(r"[0-9]{1,10}", value):
+        value = int(value)
+    if type(value) is not int or not 1 <= value <= 2_147_483_647:
+        raise InputError(f"分享包字段不合法: {what} 必须是有效页码或 null")
     return value
 
 
@@ -63,10 +77,9 @@ def validate_share(payload) -> dict:
         raise InputError("不是合法的 note-gen 分享包（根节点必须是对象）")
     if payload.get("format") != FORMAT:
         raise InputError("不是合法的 note-gen 分享包（format 不匹配）")
-    try:
-        version = int(payload.get("version"))
-    except (TypeError, ValueError):
-        raise InputError("分享包版本不合法") from None
+    version = payload.get("version")
+    if type(version) is not int:
+        raise InputError("分享包版本不合法")
     if version != VERSION:
         raise InputError(f"分享包版本不支持: v{version}（本机支持 v{VERSION}）")
     raw_blocks = payload.get("blocks")
@@ -80,15 +93,19 @@ def validate_share(payload) -> dict:
             raise InputError(f"第 {i + 1} 个笔记块格式不合法")
         content = _text(b.get("content"), limit=MAX_CONTENT_CHARS, what=f"blocks[{i}].content")
         sources = []
-        for s in (b.get("sources") or [])[:8]:
+        raw_sources = b.get("sources")
+        if raw_sources is None:
+            raw_sources = []
+        if not isinstance(raw_sources, list):
+            raise InputError(f"分享包字段不合法: blocks[{i}].sources 必须是数组")
+        for s in raw_sources[:8]:
             if not isinstance(s, dict):
-                continue
-            page = s.get("page")
-            ok_page = isinstance(page, int) or (isinstance(page, str) and page.isdigit())
+                raise InputError(f"分享包字段不合法: blocks[{i}].sources 的条目必须是对象")
             quote = s.get("quote")
             sources.append({
-                "page": int(page) if ok_page else None,
-                "quote": _text(quote, limit=300, what=f"blocks[{i}].sources.quote") if quote else "",
+                "page": _page(s.get("page"), what=f"blocks[{i}].sources.page"),
+                "quote": _text(quote, limit=300, what=f"blocks[{i}].sources.quote")
+                         if quote is not None else "",
             })
         blocks.append({
             "type": _text(b.get("type"), limit=40, what=f"blocks[{i}].type") if b.get("type") else "",
@@ -104,9 +121,9 @@ def validate_share(payload) -> dict:
     figures: dict[str, str] = {}
     total = 0
     for fid, data_url in raw_figs.items():
-        if not isinstance(fid, str) or not isinstance(data_url, str):
-            continue
-        if not DATA_URL_RE.match(data_url):
+        if not isinstance(fid, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", fid):
+            raise InputError("分享包插图标识不合法")
+        if not isinstance(data_url, str) or not DATA_URL_RE.fullmatch(data_url):
             raise InputError(f"插图 {fid} 不是合法的图片 data URL")
         total += len(data_url)
         if total > MAX_FIGURE_BYTES:
@@ -166,7 +183,7 @@ def _summary(d: Path) -> dict | None:
 async def upload_share(request: Request, file: UploadFile = File(...)):
     """导入 .ngshare 分享包（只读收录，不动任何现有教材）。"""
     st = state(request)
-    raw = await file.read()
+    raw = await file.read(MAX_FILE_BYTES + 1)
     if len(raw) > MAX_FILE_BYTES:
         raise InputError("分享包超过 40MB 限制")
     if not raw.strip():

@@ -109,11 +109,14 @@ def get_settings(request: Request):
 @router.put("/api/v1/settings")
 def put_settings(request: Request, body: dict):
     """更新应用设置（原子保存 config.yaml，不涉及密钥）。"""
-    from src.core.config import (ENCODINGS, OUTPUT_LANGUAGES, normalize_settings,
-                                 save_config)
+    from copy import deepcopy
+
+    from src.core.config import (normalize_settings, save_config,
+                                 validate_settings_patch)
 
     st = state(request)
-    cfg = st.config
+    validate_settings_patch(body)
+    cfg = deepcopy(st.config)
     for section in ("parser", "generate", "export", "match", "history", "embedding"):
         if section in body and isinstance(body[section], dict):
             cfg[section] = {**(cfg.get(section) or {}), **body[section]}
@@ -124,15 +127,11 @@ def put_settings(request: Request, body: dict):
     if parser.get("ocr_mode") not in ("auto", "force", "off"):
         raise InputError(f"不支持的 ocr_mode: {parser.get('ocr_mode')}")
     cfg = normalize_settings(cfg)
-    if cfg["export"]["encoding"] not in ENCODINGS:
-        raise InputError(f"不支持的编码: {cfg['export']['encoding']}")
-    if cfg["generate"]["output_language"] not in OUTPUT_LANGUAGES:
-        raise InputError(f"不支持的输出语言: {cfg['generate']['output_language']}")
 
     # 自定义块类型校验结果要反馈（曾静默丢弃非法条目，用户填错 id 毫无感知）
-    from src.core.block_types import install_types
+    from src.core.block_types import parse_custom_types
 
-    bad_types = install_types((cfg.get("generate", {}) or {}).get("block_types"))
+    _, bad_types = parse_custom_types((cfg.get("generate", {}) or {}).get("block_types"))
     save_config(st.root, cfg)
     st.reload_config()
     return {"settings": {"parser": st.config.get("parser"),

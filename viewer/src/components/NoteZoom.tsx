@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { api } from "../api/client";
 import { RELATION_CN, STATUS_CN, type NoteBlock } from "../api/types";
 import { renderMarkdown } from "../lib/markdown";
@@ -30,6 +30,10 @@ export default function NoteZoom() {
   const typeInfo = useStore((s) => s.typeInfo);
 
   const block: NoteBlock | undefined = blocks.find((b) => b.id === zoomId);
+  const contentHtml = useMemo(
+    () => block ? renderMarkdown(block.content || "", docId ?? "") : "",
+    [block?.content, docId],
+  );
 
   useEffect(() => {
     if (!zoomId) return;
@@ -92,7 +96,7 @@ export default function NoteZoom() {
           </button>
           <button
             className="note-zoom-edit"
-            title="编辑此卡（切到源码视图）"
+            title="编辑这条笔记"
             onClick={() => {
               // 切块统一走 store 的草稿守卫（Review #6）：不静默丢弃未保存草稿；
               // 用户取消时既不换块也不切视图
@@ -100,6 +104,11 @@ export default function NoteZoom() {
               if (!st.requestSelectBlock(block.id)) return;
               st.setView("source");
               closeZoom();
+              requestAnimationFrame(() => {
+                const card = document.getElementById("block-" + block.id);
+                card?.querySelector<HTMLTextAreaElement>(".block-editor textarea")?.focus({ preventScroll: true });
+                card?.querySelector(".block-editor")?.scrollIntoView({ block: "start" });
+              });
             }}
           >
             ✎ 编辑
@@ -109,7 +118,7 @@ export default function NoteZoom() {
         {/* 放大视图渲染全文：不得复用卡片预览（previewHtml 截断 320 字，曾吞掉乘法公理） */}
         <div
           className="note-zoom-body"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(block.content || "", docId ?? "") }}
+          dangerouslySetInnerHTML={{ __html: contentHtml }}
         />
         {block.sources.length > 0 && (
           <div className="note-zoom-sources">

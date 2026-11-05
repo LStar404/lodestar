@@ -1,3 +1,4 @@
+import Icon from "./Icon";
 import { memo, useEffect, useMemo } from "react";
 import { api } from "../api/client";
 import { RELATION_CN, STATUS_CN, type NoteBlock } from "../api/types";
@@ -32,6 +33,8 @@ function BlockCard({ block, selected, onSelect }: {
   const pages = sourceKey.split("|");
   const setHighlight = useStore((s) => s.setHighlight);
   const openZoom = useStore((s) => s.openZoom);
+  const view = useStore((s) => s.view);
+  const setView = useStore((s) => s.setView);
   const typeInfo = useStore((s) => s.typeInfo);
   const openAiEdit = useStore((s) => s.openAiEdit);
   const openLinks = useStore((s) => s.openLinks);
@@ -46,6 +49,16 @@ function BlockCard({ block, selected, onSelect }: {
     () => previewHtml(block.content || "", docId ?? ""),
     [block.content, docId]
   );
+
+  const editBlock = () => {
+    if (!onSelect(block.id)) return;
+    setView("source");
+    requestAnimationFrame(() => {
+      const card = document.getElementById("block-" + block.id);
+      card?.querySelector<HTMLTextAreaElement>(".block-editor textarea")?.focus({ preventScroll: true });
+      card?.querySelector(".block-editor")?.scrollIntoView({ block: "start" });
+    });
+  };
 
   const gotoAnchor = async (anchorId: string) => {
     try {
@@ -62,11 +75,11 @@ function BlockCard({ block, selected, onSelect }: {
   return (
     <div
       className={`block-card ${selected ? "selected" : ""}`}
+      data-type={block.type}
       onClick={() => {
-        // 单击卡片 = 选中 + 展开阅读（⤢ 按钮保留，点击来源徽章等子控件不触发）；
-        // onSelect 走草稿守卫：用户取消时不得再打开放大层（Review #6）
+        // 阅读时展开卡片；编辑时只切换当前笔记，避免反复打开阅读浮层。
         if (!onSelect(block.id)) return;
-        openZoom(block.id);
+        if (view === "card") openZoom(block.id);
       }}
     >
       <div className="block-head">
@@ -77,37 +90,6 @@ function BlockCard({ block, selected, onSelect }: {
         <span className={`badge status-${block.status}`}>{STATUS_CN[block.status] ?? block.status}</span>
         {block.generation_protected && <span className="badge protected">已保护</span>}
         {block.basis === "synthesis" && <span className="badge synthesis">AI 归纳</span>}
-        <button
-          className="block-mini-btn"
-          title="AI 编辑此块"
-          onClick={(e) => {
-            e.stopPropagation();
-            openAiEdit(block.id);
-          }}
-        >
-          ✨AI 改
-        </button>
-        <button
-          className="block-mini-btn"
-          title="关联其他知识点"
-          onClick={(e) => {
-            e.stopPropagation();
-            openLinks(block.id);
-          }}
-        >
-          🔗{(block.links ?? []).length > 0 ? String(block.links!.length) : "关联"}
-        </button>
-        <button
-          className="block-zoom-btn"
-          title="放大阅读"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!onSelect(block.id)) return;
-            openZoom(block.id);
-          }}
-        >
-          ⤢
-        </button>
       </div>
       {/* 卡片正文走与「预览」同一渲染器（markdown + KaTeX）；
           必须 memo：每次父级重渲染都重跑 markdown+KaTeX 是列表卡顿主因 */}
@@ -115,6 +97,7 @@ function BlockCard({ block, selected, onSelect }: {
         className="block-preview"
         dangerouslySetInnerHTML={{ __html: preview }}
       />
+      <div className="block-footer">
       <div className="block-sources">
         {block.sources.map((s, i) => (
           <button
@@ -129,6 +112,50 @@ function BlockCard({ block, selected, onSelect }: {
             {"📖 p." + (pages[i] ?? "?") + " · " + (RELATION_CN[s.relation] ?? s.relation)}
           </button>
         ))}
+      </div>
+      <div className="block-card-actions">
+        <button
+          className="block-mini-btn"
+          title="编辑这条笔记"
+          onClick={(e) => {
+            e.stopPropagation();
+            editBlock();
+          }}
+        >
+          ✎ 编辑
+        </button>
+        <button
+          className="block-mini-btn"
+          title="AI 编辑此块"
+          onClick={(e) => {
+            e.stopPropagation();
+            openAiEdit(block.id);
+          }}
+        >
+          <Icon name="spark" size={14} />AI 编辑
+        </button>
+        <button
+          className="block-mini-btn"
+          title="关联其他知识点"
+          onClick={(e) => {
+            e.stopPropagation();
+            openLinks(block.id);
+          }}
+        >
+          <Icon name="link" size={14} />{(block.links ?? []).length > 0 ? String(block.links!.length) : "关联"}
+        </button>
+        <button
+          className="block-zoom-btn"
+          title="放大阅读"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!onSelect(block.id)) return;
+            openZoom(block.id);
+          }}
+        >
+          <Icon name="expand" size={15} />
+        </button>
+      </div>
       </div>
     </div>
   );

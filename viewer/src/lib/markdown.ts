@@ -12,6 +12,7 @@ import "katex/dist/katex.min.css";   // KaTeX 字体/排版样式：缺了公式
 export interface RenderEnv {
   docId: string;
   captions?: Record<string, string>;
+  figureUrls?: Record<string, string>;
 }
 
 const FIG_RE = /^!\[(fig_\d{8})\]/;
@@ -120,11 +121,10 @@ function figurePlugin(md: MarkdownIt): void {
     const renderEnv = (env ?? {}) as RenderEnv;
     const caption = renderEnv.captions?.[figId] ?? figId;
     const docId = renderEnv.docId ?? "";
+    const src = renderEnv.figureUrls?.[figId] ?? "/api/v1/docs/" + docId + "/figures/" + figId;
     return (
-      '<img src="/api/v1/docs/' +
-      docId +
-      "/figures/" +
-      figId +
+      '<img src="' +
+      escapeHtml(src) +
       '" alt="' +
       escapeHtml(caption) +
       '" onerror="this.style.display=' + "'none'" + '">'
@@ -244,8 +244,10 @@ function canonicalizeMathDelimiters(src: string, inlineOnly = false): string {
   return text;
 }
 
-export function renderMarkdown(content: string, docId: string, captions: Record<string, string> = {}): string {
-  return renderer.render(canonicalizeMathDelimiters(content || ""), { docId, captions } as RenderEnv);
+export function renderMarkdown(content: string, docId: string, captions: Record<string, string> = {},
+                               figureUrls?: Record<string, string>): string {
+  return renderer.render(canonicalizeMathDelimiters(content || ""),
+    { docId, captions, figureUrls } as RenderEnv);
 }
 
 /** 行内渲染（标题等单行文本）：$…$ 走 KaTeX，无块级包装。 */

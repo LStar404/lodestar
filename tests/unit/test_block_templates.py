@@ -49,6 +49,24 @@ def test_custom_type_override_preset_hint():
     assert "自定义的定理写作指引" in type_guide("textbook"), "同 id 覆盖预设生效"
 
 
+def test_override_replaces_preset_in_schema_and_prompt():
+    from src.core.block_types import active_types, get_type
+
+    install_types([{"id": "theorem", "name": "自定义定理", "hint": "只使用新指引",
+                    "source_policy": "optional", "synthesis_allowed": True}])
+    specs = [s for s in active_types("textbook") if s.type_id == "theorem"]
+    assert specs == [get_type("theorem")]
+    assert type_enum("textbook").count("theorem") == 1
+    assert type_guide("textbook").count("- theorem（") == 1
+    assert "只使用新指引" in type_guide("textbook")
+
+
+def test_malformed_custom_entry_does_not_crash_or_hide_valid_types():
+    bad = install_types([None, 7, {"id": "valid_case", "name": "Case"}])
+    assert len(bad) == 2
+    assert "valid_case" in type_enum()
+
+
 def test_anki_cards_cover_all_knowledge_types():
     """闪卡类型不得写死数学三类：定律/算法/诊断等知识点必须进牌组（曾漏掉）。"""
     from src.export.anki_export import card_types

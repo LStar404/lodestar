@@ -196,7 +196,8 @@ class OpenAICompatAdapter:
             "usage": {
                 "in": usage.get("prompt_tokens"),
                 "out": usage.get("completion_tokens"),
-                "estimated": not bool(usage.get("prompt_tokens")),
+                "estimated": (usage.get("prompt_tokens") is None
+                              or usage.get("completion_tokens") is None),
             },
             "request_id": data.get("id") or request_id,
         }
@@ -388,9 +389,10 @@ class LLMClient:
                  tools: list[dict] | None = None, tool_choice: str | dict | None = None,
                  model: str | None = None, doc_id: str | None = None,
                  chapter_id: str | None = None, task_id: str | None = None,
-                 budget: BudgetGuard | None = None) -> dict:
-        if self.halted_reason:
-            raise QuotaExhausted(self.halted_reason)
+                 budget: BudgetGuard | None = None, _circuit=None) -> dict:
+        circuit = self if _circuit is None else _circuit
+        if circuit.halted_reason:
+            raise QuotaExhausted(circuit.halted_reason)
         model_name = model or self.route(task)
         provider_cfg, model_cfg, adapter = self._provider_for(model_name)
         # 路由名是 "provider/model"，供应商 API 只认裸模型 id
@@ -415,6 +417,9 @@ class LLMClient:
                 self._acquire_slot()
                 t1 = time.monotonic()
                 try:
+                    # A queued call may have entered before another call hit quota.
+                    if circuit.halted_reason:
+                        raise QuotaExhausted(circuit.halted_reason)
                     result = adapter.complete(api_model, messages, schema, max_tokens,
                                               temperature=temperature, tools=tools,
                                               tool_choice=tool_choice,
@@ -422,6 +427,10 @@ class LLMClient:
                                               context={"task": task, "doc_id": doc_id, "chapter_id": chapter_id},
                                               reasoning_effort=self.reasoning_effort,
                                               thinking=self.thinking)
+                except QuotaExhausted as exc:
+                    # Set the circuit before releasing the slot to queued callers.
+                    circuit.halted_reason = exc.message
+                    raise
                 finally:
                     self._release_slot()
                 with self._stats_lock:
@@ -453,7 +462,7 @@ class LLMClient:
                 if budget:
                     budget.settle(None, reserved)      # 退回预留额
                 if isinstance(exc, QuotaExhausted):
-                    self.halted_reason = exc.message
+                    circuit.halted_reason = exc.message
                 self.runtime.log_usage(
                     provider_id=provider_cfg["id"], model=model_name, task=task,
                     request_id=request_id, doc_id=doc_id, chapter_id=chapter_id,
@@ -462,9 +471,13 @@ class LLMClient:
                 raise
 
             self._throttle(down=False)      # 成功一次回升一格（自适应探测上游余量）
-            usage = result.get("usage") or {}
-            tin = usage.get("in") or est_in
-            tout = usage.get("out") or est_out
+            usage = dict(result.get("usage") or {})
+            missing_in, missing_out = usage.get("in") is None, usage.get("out") is None
+            tin = est_in if missing_in else usage["in"]
+            tout = est_out if missing_out else usage["out"]
+            usage.update({"in": tin, "out": tout,
+                          "estimated": bool(usage.get("estimated")) or missing_in or missing_out})
+            result["usage"] = usage
             with self._stats_lock:
                 self.stats["tokens_in"] += tin
                 self.stats["tokens_out"] += tout
@@ -506,3 +519,26 @@ class LLMClient:
         caps = self.registry.capabilities(full)
         return {"ok": True, "usage": result.get("usage"), "capabilities": caps,
                 "note": "连通成功不代表 json_schema/tools 均可用，能力以显式配置为准"}
+
+
+class _LLMOperation:
+    """One user operation's quota circuit, sharing the application's request gate."""
+
+    def __init__(self, client: LLMClient):
+        self._client = client
+        self.halted_reason: str | None = None
+
+    def complete(self, *args, **kwargs):
+        return self._client.complete(*args, **kwargs, _circuit=self)
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+
+def operation_client(client):
+    """Start a fresh circuit for an explicit action, including same-task resumes.
+
+    Providers, connection pools, usage recording and concurrency remain shared.
+    Lightweight injected clients only implementing complete() remain supported.
+    """
+    return _LLMOperation(client) if isinstance(client, LLMClient) else client

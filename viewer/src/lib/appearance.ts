@@ -35,7 +35,7 @@ const DEFAULTS: Appearance = {
   bg: "theme",
   bgColor: "#151b2c",
   bgImage: "",
-  motion: "full",
+  motion: "soft",
 };
 
 export function loadAppearance(): Appearance {

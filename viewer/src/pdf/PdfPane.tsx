@@ -1,15 +1,20 @@
+import Icon from "../components/Icon";
 import { useEffect, useMemo, useRef, useState } from "react";
-import * as pdfjs from "pdfjs-dist";
 import type { ReactElement } from "react";
 import { api } from "../api/client";
 import HighlightLayer, { type HighlightRect } from "../components/HighlightLayer";
 import { pdfRectToScreen, screenRectToPdf, type Rect } from "./coord";
 import { useStore } from "../state/store";
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.mjs",
-  import.meta.url
-).toString();
+let pdfjsModule: Promise<typeof import("pdfjs-dist")> | null = null;
+function loadPdfJs() {
+  return pdfjsModule ??= import("pdfjs-dist").then((pdfjs) => {
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+      "pdfjs-dist/build/pdf.worker.mjs", import.meta.url,
+    ).toString();
+    return pdfjs;
+  }).catch((error) => { pdfjsModule = null; throw error; });
+}
 
 function token(): string {
   const meta = document.querySelector('meta[name="local-token"]');
@@ -38,6 +43,7 @@ export default function PdfPane(): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const docRef = useRef<any>(null);
+  const pdfjsRef = useRef<typeof import("pdfjs-dist") | null>(null);
   const viewportRef = useRef<any>(null);
   const [numPages, setNumPages] = useState(0);
   const [scale, setScale] = useState(1.2);
@@ -77,6 +83,9 @@ export default function PdfPane(): ReactElement {
       canvasRef.current.height = 0;
     }
     (async () => {
+      const pdfjs = await loadPdfJs();
+      if (cancelled) return;
+      pdfjsRef.current = pdfjs;
       const task = pdfjs.getDocument({
         url: api.pdfUrl(docId),
         httpHeaders: { "X-Local-Token": token() },
@@ -97,12 +106,12 @@ export default function PdfPane(): ReactElement {
       setNumPages(doc.numPages);
       try {
         const labels = await doc.getPageLabels();
-        setPageLabels(labels ?? null);
+        if (!cancelled) setPageLabels(labels ?? null);
       } catch {
-        setPageLabels(null);
+        if (!cancelled) setPageLabels(null);
       }
-      setPdfPage(1);
-    })().catch((e: Error) => setToast("PDF 加载失败：" + e.message));
+      if (!cancelled) setPdfPage(1);
+    })().catch((e: Error) => { if (!cancelled) setToast("PDF 加载失败：" + e.message); });
     return () => {
       cancelled = true;
       // 卸载：取消在途渲染并销毁文档，避免泄漏与卸载后 setState
@@ -164,21 +173,11 @@ export default function PdfPane(): ReactElement {
       if (cancelled) return;
       setTextItems(content.items);
       setRenderKey((k) => k + 1);
-    })();
+    })().catch((e: Error) => { if (!cancelled) setToast("页面渲染失败：" + e.message); });
     return () => {
       cancelled = true;
     };
   }, [docId, pdfPage, scale, docGen]);
-
-  // 翻页联动（6.3/7.3）：预取前后各 1 页
-  useEffect(() => {
-    if (!docId || !numPages) return;
-    [pdfPage - 1, pdfPage + 1].forEach((p) => {
-      if (p >= 1 && p <= numPages) {
-        void api.pageBlocks(docId, p).catch(() => undefined);
-      }
-    });
-  }, [docId, pdfPage, numPages]);
 
   const highlights: HighlightRect[] = useMemo(() => {
     const viewport = viewportRef.current;
@@ -263,19 +262,38 @@ export default function PdfPane(): ReactElement {
     scrollRef.current?.releasePointerCapture(e.pointerId);
   };
 
+  const fitWidth = async () => {
+    const doc = docRef.current;
+    if (!doc || !scrollRef.current) return;
+    try {
+      const page = await doc.getPage(pdfPage);
+      if (doc !== docRef.current || !scrollRef.current) return;
+      const style = getComputedStyle(scrollRef.current);
+      const width = scrollRef.current.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      setScale(Math.max(0.2, Math.min(3, width / page.getViewport({ scale: 1 }).width)));
+    } catch { /* 文档切换过程中不应用旧尺寸 */ }
+  };
+
   return (
     <div className="pdf-pane">
-      <div className="pdf-toolbar">
-        <button onClick={() => setPdfPage(Math.max(1, pdfPage - 1))} disabled={pdfPage <= 1}>上一页</button>
+      <div className="pane-heading">
+        <div className="pane-label"><Icon name="book" /><strong>教材原文</strong></div>
+        <span className="pane-caption">边读边记，有据可循</span>
+      </div>
+      <div className="pdf-toolbar" style={{ display: docId ? undefined : "none" }}>
+        <button title="上一页" aria-label="上一页" onClick={() => setPdfPage(Math.max(1, pdfPage - 1))} disabled={pdfPage <= 1}><Icon name="left" size={15} /></button>
         <span className="page-indicator">
           {pdfPage} / {numPages || "?"}
           {pageLabels && pageLabels[pdfPage - 1] ? "（印刷页 " + pageLabels[pdfPage - 1] + "）" : ""}
         </span>
-        <button onClick={() => setPdfPage(Math.min(numPages, pdfPage + 1))} disabled={pdfPage >= numPages}>下一页</button>
-        <button onClick={() => setScale((s) => Math.max(0.5, s - 0.2))}>－</button>
-        <button onClick={() => setScale((s) => Math.min(3, s + 0.2))}>＋</button>
+        <button title="下一页" aria-label="下一页" onClick={() => setPdfPage(Math.min(numPages, pdfPage + 1))} disabled={pdfPage >= numPages}><Icon name="right" size={15} /></button>
+        <button aria-label="缩小原文" onClick={() => setScale((s) => Math.max(0.5, s - 0.2))}>−</button>
+        <span className="zoom-level">{Math.round(scale * 100)}%</span>
+        <button aria-label="放大原文" onClick={() => setScale((s) => Math.min(3, s + 0.2))}>+</button>
+        <button onClick={() => void fitWidth()} title="让原文适应当前栏宽">适宽</button>
         <button
-          className={panMode ? "primary" : ""}
+          className={"pan-toggle " + (panMode ? "active" : "")}
+          aria-pressed={panMode}
           title="拖拽平移开/关：开启时按住拖动画面；关闭后可框选文字做选区匹配（中键拖拽始终平移）"
           onClick={() =>
             setPanMode((v) => {
@@ -284,7 +302,7 @@ export default function PdfPane(): ReactElement {
             })
           }
         >
-          {panMode ? "🖐 拖拽中" : "🖱 选择中"}
+          {panMode ? "拖拽" : "选字"}
         </button>
       </div>
       <div
@@ -295,13 +313,19 @@ export default function PdfPane(): ReactElement {
         onPointerUp={endPan}
         onPointerCancel={endPan}
       >
-        <div className="pdf-page" ref={pageRef} onMouseUp={onMouseUp}>
+        {!docId && <div className="workspace-empty">
+          <span className="empty-symbol"><Icon name="book" size={30} /></span>
+          <strong>开启一段专注的阅读</strong>
+          <p>导入一份 PDF 或 PPTX 讲义，<br />让原文、笔记和知识关联在这里相遇。</p>
+          <span className="empty-step">支持拖放文件到窗口</span>
+        </div>}
+        <div className="pdf-page" style={{ display: docId ? undefined : "none" }} ref={pageRef} onMouseUp={onMouseUp}>
           <canvas ref={canvasRef} />
           <div className="text-layer">
             {textItems.map((item, i) => {
               const viewport = viewportRef.current;
-              if (!viewport || !item.str) return null;
-              const tx = pdfjs.Util.transform(viewport.transform, item.transform);
+              if (!viewport || !item.str || !pdfjsRef.current) return null;
+              const tx = pdfjsRef.current.Util.transform(viewport.transform, item.transform);
               const fontSize = Math.hypot(tx[2], tx[3]);
               return (
                 <span

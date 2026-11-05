@@ -6,6 +6,7 @@ import json
 import uuid
 
 from src.core.errors import ConflictError, InputError, NotFound, SchemaViolation
+from src.core.llm import operation_client
 from src.core.store import DocStore
 from src.generate.prompts import AGENT_SYSTEM_PROMPT
 
@@ -77,7 +78,7 @@ def plan_edit(state, *, doc_id: str, instruction: str, block_id: str | None = No
 
     messages = [{"role": "system", "content": AGENT_SYSTEM_PROMPT},
                 {"role": "user", "content": payload}]
-    client = state.client
+    client = operation_client(state.client)
     caps = {}
     try:
         caps = state.registry.capabilities(client.route("agent"))

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import create_app
+from src.api.routes.shares import validate_share
+from src.core.errors import InputError
 
 PAYLOAD = {
     "format": "note-gen-share",
@@ -23,6 +26,20 @@ PAYLOAD = {
     ],
     "figures": {"fig_abc": "data:image/png;base64,iVBORw0KGgo="},
 }
+
+
+@pytest.mark.parametrize("changes", [
+    {"version": 1.9},
+    {"version": float("inf")},
+    {"blocks": [{"content": "x", "sources": {"page": 1}}]},
+    {"blocks": [{"content": "x", "sources": [{"page": "²"}]}]},
+    {"blocks": [{"content": "\ud800"}]},
+    {"figures": {"[": "data:image/png;base64,aA=="}},
+    {"figures": {"fig_00000001": "data:image/png;base64,aA==\n"}},
+])
+def test_malformed_share_fields_are_rejected_as_input_errors(changes):
+    with pytest.raises(InputError):
+        validate_share({**PAYLOAD, **changes})
 
 
 def _app(workspace):

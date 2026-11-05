@@ -8,7 +8,7 @@ import json
 from fastapi import APIRouter, Request
 
 from src.core.errors import ConflictError, InputError, NotFound
-from src.core.paths import DOC_ID_RE
+from src.core.paths import ANCHOR_ID_RE, DOC_ID_RE
 from src.core.store import DocStore, sort_blocks
 
 router = APIRouter()
@@ -74,6 +74,11 @@ def blocks_by_status(request: Request, doc_id: str, status: str | None = None):
     return {"items": sort_blocks(rows)}
 
 
+@router.get("/api/v1/docs/{doc_id}/block-counts")
+def block_counts(request: Request, doc_id: str):
+    return DocStore(state(request).layout, doc_id).block_counts()
+
+
 @router.get("/api/v1/blocks/{block_id}")
 def get_block(request: Request, block_id: str):
     st = state(request)
@@ -82,6 +87,27 @@ def get_block(request: Request, block_id: str):
     history = [{"rev_id": h["rev_id"], "author": h.get("author"), "message": h.get("message"),
                 "created_at": h.get("created_at")} for h in store.history_rows(block_id)]
     return {"block": block, "history": history}
+
+
+@router.post("/api/v1/docs/{doc_id}/anchors/batch")
+def batch_anchors(request: Request, doc_id: str, body: dict):
+    """一批最多 200 个来源，仅查指定教材，避免逐卡请求与全库扫描。"""
+    ids = body.get("ids")
+    if not isinstance(ids, list) or len(ids) > 200:
+        raise InputError("ids 必须是最多 200 个锚点 ID 的数组")
+    if any(not isinstance(key, str) or not ANCHOR_ID_RE.fullmatch(key) for key in ids):
+        raise InputError("ids 包含非法锚点 ID")
+    st = state(request)
+    revision, found = DocStore(st.layout, doc_id).get_anchors(ids)
+    return {"items": list(found.values()), "data_revision": revision,
+            "missing": [key for key in dict.fromkeys(ids) if key not in found]}
+
+
+@router.get("/api/v1/docs/{doc_id}/block-titles")
+def block_titles(request: Request, doc_id: str):
+    """知识点链接只需要标题，无须下载全书正文。"""
+    store = DocStore(state(request).layout, doc_id)
+    return {"items": store.block_titles()}
 
 
 @router.patch("/api/v1/blocks/{block_id}")
@@ -189,19 +215,18 @@ def get_anchor(request: Request, anchor_id: str):
     # 点查解析链（6.4）：runtime.doc_map → 命中则只读该 doc；未命中回退扫描
     doc_id = _lookup_doc(st, "anchor", anchor_id)
     if doc_id:
-        anchor = DocStore(st.layout, doc_id).anchors_by_id().get(anchor_id)
-        if anchor:
-            return anchor
+        try:
+            return DocStore(st.layout, doc_id).get_anchor(anchor_id)
+        except NotFound:
+            pass  # 派生映射可能落后于删书/恢复；继续按事实源扫描。
     for doc_dir in sorted(st.layout.data_dir.glob("*/manifest.json")):
         cand = doc_dir.parent.name
         if not DOC_ID_RE.match(cand):
             continue
         try:
-            anchor = DocStore(st.layout, cand).anchors_by_id().get(anchor_id)
+            return DocStore(st.layout, cand).get_anchor(anchor_id)
         except Exception:
             continue
-        if anchor:
-            return anchor
     raise NotFound(f"锚点不存在: {anchor_id}")
 
 
@@ -219,16 +244,19 @@ def _find_store(st, block_id: str) -> DocStore:
     doc_id = _lookup_doc(st, "block", block_id)
     if doc_id:
         store = DocStore(st.layout, doc_id)
-        if block_id in store.blocks_by_id(include_deleted=True):
+        try:
+            store.get_block(block_id)
             return store
+        except NotFound:
+            pass
     for doc_dir in sorted(st.layout.data_dir.glob("*/manifest.json")):
         cand = doc_dir.parent.name
         if not DOC_ID_RE.match(cand):
             continue
         try:
             store = DocStore(st.layout, cand)
-            if block_id in store.blocks_by_id(include_deleted=True):
-                return store
+            store.get_block(block_id)
+            return store
         except Exception:
             continue
     raise NotFound(f"块不存在: {block_id}")

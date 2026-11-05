@@ -98,8 +98,10 @@ export default function AgentCommandBar() {
   return (
     <>
       <div className="agent-bar">
+        <div className="agent-caption"><b>AI 编辑助手</b><span>先生成计划，由你确认执行</span></div>
         <input
-          placeholder="给 agent 的编辑指令（先出计划，确认后执行）"
+          aria-label="AI 编辑指令"
+          placeholder="例如：把本章整理为复习提纲…"
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && void plan()}
