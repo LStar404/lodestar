@@ -30,6 +30,9 @@ const RELATION_COLORS: Record<string, string> = {
   summarizes: "rgba(14,165,233,0.28)",
 };
 
+// 原文缩放策略："page" = 整页铺进可视区（宽高都装下）; "width" = 只对齐栏宽; "none" = 手动给定比例
+type FitMode = "page" | "width" | "none";
+
 export default function PdfPane(): ReactElement {
   const docId = useStore((s) => s.docId);
   const pdfPage = useStore((s) => s.pdfPage);
@@ -47,6 +50,13 @@ export default function PdfPane(): ReactElement {
   const viewportRef = useRef<any>(null);
   const [numPages, setNumPages] = useState(0);
   const [scale, setScale] = useState(1.2);
+  // 缩放策略：整页（按栏宽和栏高取较小比例，一屏看完整页）/ 适宽（铺满栏宽，需上下滚）/ 手动
+  const [fitMode, setFitMode] = useState<FitMode>(() => {
+    const saved = localStorage.getItem("note-gen-pdf-fit");
+    return saved === "width" || saved === "none" ? saved : "page";
+  });
+  // 滚动容器可用宽高（随窗口、栏宽拖拽实时更新），整页/适宽都按它算比例
+  const [box, setBox] = useState({ w: 0, h: 0 });
   // 拖拽平移：默认开启（拖动画面），关掉后恢复文字框选（选区匹配）；中键拖拽始终平移
   const [panMode, setPanMode] = useState(() => localStorage.getItem("note-gen-pdf-pan") !== "0");
   // 文档代次：加载完成 +1，驱动重绘效果（仅靠 docId 会在切换教材时漏触发——
@@ -179,6 +189,57 @@ export default function PdfPane(): ReactElement {
     };
   }, [docId, pdfPage, scale, docGen]);
 
+  // 量一次滚动容器的可用宽高（去掉内边距），栏宽拖拽/窗口缩放时跟着更新
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => {
+      const style = getComputedStyle(el);
+      const w = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const h = el.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      setBox((prev) =>
+        Math.abs(prev.w - w) < 1 && Math.abs(prev.h - h) < 1 ? prev : { w, h }
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [docId]);
+
+  // 整页/适宽：按当前页的真实宽高算比例。整页取宽高两个比例里更小的那个，
+  // 于是一屏就能看完整页，而不是像原来固定 120% 那样只露出半页。
+  // 拖栏宽会连续触发 ResizeObserver，这里压 120ms 防抖，避免每帧重渲染整页。
+  useEffect(() => {
+    const doc = docRef.current;
+    if (!doc || fitMode === "none" || box.w <= 0) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      (async () => {
+        try {
+          const page = await doc.getPage(pdfPage);
+          if (cancelled) return;
+          const base = page.getViewport({ scale: 1 });
+          const byWidth = box.w / base.width;
+          const byHeight = box.h > 0 ? box.h / base.height : byWidth;
+          const target = fitMode === "width" ? byWidth : Math.min(byWidth, byHeight);
+          const next = Math.max(0.15, Math.min(3, Number(target.toFixed(4))));
+          setScale((prev) => (Math.abs(prev - next) < 0.001 ? prev : next));
+        } catch {
+          /* 文档切换过程中忽略旧尺寸 */
+        }
+      })();
+    }, 120);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [fitMode, box.w, box.h, pdfPage, docGen]);
+
   const highlights: HighlightRect[] = useMemo(() => {
     const viewport = viewportRef.current;
     const out: HighlightRect[] = [];
@@ -262,16 +323,15 @@ export default function PdfPane(): ReactElement {
     scrollRef.current?.releasePointerCapture(e.pointerId);
   };
 
-  const fitWidth = async () => {
-    const doc = docRef.current;
-    if (!doc || !scrollRef.current) return;
-    try {
-      const page = await doc.getPage(pdfPage);
-      if (doc !== docRef.current || !scrollRef.current) return;
-      const style = getComputedStyle(scrollRef.current);
-      const width = scrollRef.current.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      setScale(Math.max(0.2, Math.min(3, width / page.getViewport({ scale: 1 }).width)));
-    } catch { /* 文档切换过程中不应用旧尺寸 */ }
+  const applyFit = (mode: FitMode) => {
+    setFitMode(mode);
+    localStorage.setItem("note-gen-pdf-fit", mode);
+  };
+
+  // 手动缩放一旦介入就退出自动适配，否则下一次重排会把用户刚调的倍率又拉回去
+  const zoomBy = (delta: number) => {
+    applyFit("none");
+    setScale((s) => Math.max(0.15, Math.min(4, Number((s + delta).toFixed(3)))));
   };
 
   return (
@@ -287,10 +347,25 @@ export default function PdfPane(): ReactElement {
           {pageLabels && pageLabels[pdfPage - 1] ? "（印刷页 " + pageLabels[pdfPage - 1] + "）" : ""}
         </span>
         <button title="下一页" aria-label="下一页" onClick={() => setPdfPage(Math.min(numPages, pdfPage + 1))} disabled={pdfPage >= numPages}><Icon name="right" size={15} /></button>
-        <button aria-label="缩小原文" onClick={() => setScale((s) => Math.max(0.5, s - 0.2))}>−</button>
+        <button aria-label="缩小原文" title="缩小（转为手动比例）" onClick={() => zoomBy(-0.1)}>−</button>
         <span className="zoom-level">{Math.round(scale * 100)}%</span>
-        <button aria-label="放大原文" onClick={() => setScale((s) => Math.min(3, s + 0.2))}>+</button>
-        <button onClick={() => void fitWidth()} title="让原文适应当前栏宽">适宽</button>
+        <button aria-label="放大原文" title="放大（转为手动比例）" onClick={() => zoomBy(0.1)}>+</button>
+        <button
+          className={"zoom-fit " + (fitMode === "page" ? "active" : "")}
+          aria-pressed={fitMode === "page"}
+          onClick={() => applyFit("page")}
+          title="整页：按栏宽和栏高一起缩，一屏看完整页（不放大、不裁切）"
+        >
+          整页
+        </button>
+        <button
+          className={"zoom-fit " + (fitMode === "width" ? "active" : "")}
+          aria-pressed={fitMode === "width"}
+          onClick={() => applyFit("width")}
+          title="适宽：铺满当前栏宽，整页需上下滚动"
+        >
+          适宽
+        </button>
         <button
           className={"pan-toggle " + (panMode ? "active" : "")}
           aria-pressed={panMode}

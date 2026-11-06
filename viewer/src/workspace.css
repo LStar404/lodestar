@@ -18,9 +18,23 @@
 }
 
 /* Reading controls and chapter discovery. */
-.layout-switch { display: flex; padding: 2px; border: 1px solid var(--border); background: var(--panel-2); border-radius: 7px; gap: 2px; }
+.layout-switch { position: relative; display: flex; padding: 2px; border: 1px solid var(--border); background: var(--panel-2); border-radius: 7px; gap: 2px; }
 .layout-switch button { border: 0; border-radius: 5px; background: transparent; color: var(--muted); font-size: 11px; padding: 3px 8px; min-height: 25px; }
 .layout-switch button.active { color: var(--accent); background: var(--panel); box-shadow: var(--shadow-sm); }
+/* 原来那条「阅读工作台 · 把知识，慢慢读懂」横条改成悬停浮层：不占高度，悬停/键盘聚焦才出现。
+   浮在开关下方（不是上方），避免盖住第一行右侧的「帮助 / 设置」。 */
+.layout-switch-caption {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 41;
+  display: flex; align-items: center; gap: 7px; padding: 6px 10px; white-space: nowrap;
+  border: 1px solid var(--border-strong); border-radius: 8px; background: var(--panel);
+  box-shadow: var(--shadow-lg); color: var(--text-2); font-size: 11px; font-weight: 600;
+  pointer-events: none; opacity: 0; transform: translateY(-4px);
+  transition: opacity .16s ease, transform .16s ease;
+}
+.layout-switch-caption .reading-mode-caption { color: var(--muted); font-size: 10px; font-weight: 400; }
+.workspace-dot { width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: var(--accent); }
+.layout-switch:hover .layout-switch-caption,
+.layout-switch:focus-within .layout-switch-caption { opacity: 1; transform: translateY(0); }
 .app.focus-mode .col-source, .app.focus-mode .col-details, .app.focus-mode .splitter { display: none; }
 .app.focus-mode .columns { display: flex; }
 .app.focus-mode .col-notes { flex: 1 1 0 !important; max-width: 960px; margin: 0 auto; }
@@ -97,16 +111,15 @@ button:disabled { pointer-events: none; }
 
 /* Two rows keep reading context separate from application utilities. */
 .toolbar { display: block; padding: 0 16px; background: var(--panel); flex-shrink: 0; border-bottom: 1px solid var(--border); }
-.toolbar-top { display: flex; align-items: center; gap: 16px; min-height: 42px; }
-.toolbar .brand { gap: 8px; margin: 0; }
+.toolbar-top { display: flex; align-items: center; gap: 14px; min-height: 40px; }
+.toolbar .brand { gap: 7px; margin: 0; }
 .toolbar .brand .logo {
-  height: 28px; width: 28px; border-radius: 8px; background: var(--accent); color: var(--panel);
+  height: 26px; width: 26px; border-radius: 7px; background: var(--accent); color: var(--panel);
   box-shadow: none; display: grid; place-items: center;
 }
-.brand-copy { display: flex; align-items: baseline; gap: 8px; }
-.brand-copy strong { font-size: 16px; font-weight: 700; letter-spacing: -.4px; line-height: 1; }
+.brand-copy { display: flex; align-items: baseline; }
+.brand-copy strong { font-size: 14px; font-weight: 700; letter-spacing: -.3px; line-height: 1; }
 .brand-dot { color: var(--accent); }
-.brand-copy small { color: var(--muted); font-size: 11px; font-weight: 400; letter-spacing: .3px; }
 .toolbar .search-box { width: min(300px, 28vw); min-width: 140px; margin-left: auto; position: relative; }
 .search-box::before { content: none; }
 .search-box > .ui-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
@@ -173,6 +186,8 @@ button:disabled { pointer-events: none; }
 .pdf-toolbar button:hover { background: var(--accent-soft); }
 .pdf-toolbar .page-indicator { color: var(--text-2); font-size: 11px; font-variant-numeric: tabular-nums; }
 .zoom-level { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.pdf-toolbar .zoom-fit { font-size: 11px; color: var(--muted); }
+.pdf-toolbar .zoom-fit.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .pdf-toolbar .pan-toggle { margin-left: auto; font-size: 11px; }
 .pdf-toolbar .pan-toggle.active { background: var(--accent-soft); color: var(--accent); }
 .pdf-scroll { padding: 20px; background: color-mix(in srgb, var(--border) 55%, var(--panel-2)); }
@@ -274,10 +289,9 @@ button:disabled { pointer-events: none; }
 @media (max-width: 480px) {
   .toolbar { padding-inline: 12px; }
   .toolbar-top { gap: 8px; }
-  .brand-copy small { display: none; }
-  .brand-copy strong { font-size: 15px; }
+  .brand-copy strong { font-size: 13px; }
   .toolbar .brand { gap: 6px; }
-  .toolbar .brand .logo { width: 24px; height: 24px; border-radius: 6px; }
+  .toolbar .brand .logo { width: 22px; height: 22px; border-radius: 6px; }
   .toolbar-utilities { gap: 0; }
   .toolbar-utilities .theme-select { max-width: 74px; padding-inline: 3px; font-size: 11px; }
   .toolbar-utilities .action-menu summary { padding-inline: 5px; font-size: 11px; }

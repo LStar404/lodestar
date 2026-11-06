@@ -547,9 +547,9 @@ export default function Toolbar() {
     <>
       <header className="toolbar">
         <div className="toolbar-top">
-          <div className="brand">
-            <span className="logo"><Icon name="book" size={17} /></span>
-            <span className="brand-copy"><strong>note-gen<span className="brand-dot">.</span></strong><small>让阅读，成为知识</small></span>
+          <div className="brand" title="note-gen · 自动笔记软件">
+            <span className="logo"><Icon name="book" size={16} /></span>
+            <span className="brand-copy"><strong>note-gen<span className="brand-dot">.</span></strong></span>
           </div>
           <GlobalSearch />
 
@@ -757,6 +757,10 @@ export default function Toolbar() {
             </button>
             <span className="context-divider">|</span>
             <div className="layout-switch" role="group" aria-label="阅读布局">
+              {/* 「阅读工作台 · 把知识，慢慢读懂」不在工具栏占位，悬停/聚焦时才浮出来 */}
+              <span className="layout-switch-caption" aria-hidden="true">
+                <span className="workspace-dot" />阅读工作台<span className="reading-mode-caption">把知识，慢慢读懂</span>
+              </span>
               <button className={!focusMode ? "active" : ""} aria-pressed={!focusMode}
                 title="左边教材原文、中间笔记、右边阅读索引三栏对照" onClick={() => setReadingMode("split")}>
                 <Icon name="book" size={13} />对照阅读
