@@ -8,7 +8,6 @@ import BlockActionModals from "./components/BlockActionModals";
 import OnboardingWizard from "./components/OnboardingWizard";
 import NoteZoom from "./components/NoteZoom";
 import DeferredPanel from "./components/DeferredPanel";
-import Icon from "./components/Icon";
 import ReviewQueue from "./components/ReviewQueue";
 import { useStore } from "./state/store";
 
@@ -30,9 +29,6 @@ function initialWidths(): [number, number] {
 
 export default function App() {
   const focusMode = useStore((s) => s.readingMode === "focus");
-  // 阅读布局切换走 store 的 setReadingMode（与 Toolbar 同一状态源）；
-  // 曾误写成不存在的 setFocusMode，tsc 报 TS2552、npm run build 直接失败
-  const setReadingMode = useStore((s) => s.setReadingMode);
   const settingsOpen = useStore((s) => s.settingsOpen);
   const setupOpen = useStore((s) => s.setupOpen);
   // 主题：跟随 localStorage，首次进入用浅色
@@ -191,13 +187,6 @@ export default function App() {
   return (
     <div className={"app" + (focusMode ? " focus-mode" : "")}>
       <Toolbar />
-      <div className="reading-mode-bar">
-        <div className="reading-mode-label"><span className="workspace-dot" />阅读工作台<span className="reading-mode-caption">把知识，慢慢读懂</span></div>
-        <div className="layout-switch" aria-label="阅读布局">
-          <button className={!focusMode ? "active" : ""} aria-pressed={!focusMode} onClick={() => setReadingMode("split")}><Icon name="book" size={14} />对照阅读</button>
-          <button className={focusMode ? "active" : ""} aria-pressed={focusMode} onClick={() => setReadingMode("focus")}><Icon name="notes" size={14} />专注笔记</button>
-        </div>
-      </div>
       <main className="columns" ref={colsRef}>
         <div className="col col-source" style={{ flex: "0 0 " + widths[0] + "px" }}>
           <PdfPane />
