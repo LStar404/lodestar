@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lodestar ⁂ 星引 — 品牌预览</title>
+<style>
+  :root{
+    --ink:#101C18; --pine:#0E5A46; --pine-2:#17735B;
+    --paper:#F7F8F5; --line:rgba(16,28,24,.10); --muted:#6B7A73; --faint:#9AA7A0;
+    --cream:#F3EEE2; --night:#07100D;
+    --serif: Georgia, "Times New Roman", "Songti SC", "SimSun", serif;
+    --sans: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:960px;margin:0 auto;padding:64px 48px 96px}
+  .eyebrow{font-size:11px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase;margin:0 0 6px}
+  .sec{margin-top:72px}
+  .sec h2{font-size:13px;font-weight:600;letter-spacing:.16em;color:var(--muted);margin:0 0 20px;text-transform:uppercase}
+  .sec h2::after{content:"";display:block;width:28px;height:1px;background:var(--pine);margin-top:10px}
+
+  /* 01 lockup */
+  .lockup{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+  .lockup .tile{width:76px;height:76px;flex:0 0 auto;display:block}
+  .lockup .wm{font-family:var(--serif);font-size:52px;line-height:1;letter-spacing:-.015em}
+  .lockup .rule{width:1px;height:36px;background:var(--line)}
+  .lockup .cn{font-size:16px;letter-spacing:.42em;color:var(--pine);padding-left:.2em}
+  .lede{margin:26px 0 0;font-size:15px;line-height:1.9;color:var(--muted);max-width:640px}
+  .lede b{color:var(--ink);font-weight:600}
+  .glyph{font-family:var(--serif);font-size:1.15em;color:var(--pine);padding:0 .12em}
+
+  /* 02 app header */
+  .frame{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 1px 2px rgba(16,28,24,.04)}
+  .frame + .frame{margin-top:16px}
+  .apphead{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:0 18px;height:88px;border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:10px;min-width:0}
+  .brand .tile{width:28px;height:28px;flex:0 0 auto}
+  .brand .name{font-family:var(--serif);font-size:17px;letter-spacing:-.01em}
+  .brand .cn{font-size:12px;letter-spacing:.3em;color:var(--pine)}
+  .brand .vr{width:1px;height:12px;background:var(--line);margin:0 4px}
+  .brand .tag{font-size:12px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .search{display:flex;align-items:center;gap:8px;width:230px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:999px;color:var(--faint);font-size:12px;background:#FBFCFA}
+  .frame.dark{background:var(--night);border-color:rgba(243,238,226,.10)}
+  .frame.dark .apphead{border-bottom-color:rgba(243,238,226,.08)}
+  .frame.dark .brand .name{color:var(--cream)}
+  .frame.dark .brand .cn{color:#8FC7B3}
+  .frame.dark .brand .tag{color:rgba(243,238,226,.40)}
+  .frame.dark .brand .vr{background:rgba(243,238,226,.14)}
+  .frame.dark .search{background:rgba(243,238,226,.04);border-color:rgba(243,238,226,.12);color:rgba(243,238,226,.34)}
+  .hint{margin:10px 2px 0;font-size:11px;letter-spacing:.06em;color:var(--faint)}
+
+  /* 03 divider */
+  .prose{background:#fff;border:1px solid var(--line);border-radius:14px;padding:34px 40px;font-size:15px;line-height:2.05;color:#33403A}
+  .prose p{margin:0}
+  .divider{display:flex;align-items:center;gap:16px;margin:22px 0}
+  .divider::before,.divider::after{content:"";height:1px;flex:1;background:var(--line)}
+  .divider span{font-family:var(--serif);font-size:20px;color:var(--pine);letter-spacing:.1em}
+
+  /* 04 404 */
+  .e404{background:var(--night);border-radius:14px;padding:56px 24px 44px;text-align:center;color:var(--cream)}
+  .e404 .t{font-family:var(--serif);font-size:22px;margin:18px 0 8px;letter-spacing:.02em}
+  .e404 .s{font-size:12px;letter-spacing:.3em;color:rgba(243,238,226,.42);text-transform:uppercase}
+
+  /* 05 slots */
+  .slots{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .slot{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 18px 20px}
+  .slot .k{font-size:10px;letter-spacing:.2em;color:var(--faint);text-transform:uppercase}
+  .slot .v{font-family:var(--serif);font-size:15px;margin-top:10px;line-height:1.5}
+  .slot .d{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.7}
+  /* 06 inscription */
+  .latin{background:#0C1713;border-radius:14px;padding:50px 24px 38px;text-align:center;color:var(--cream)}
+  .latin .caps{font-family:var(--serif);font-size:30px;letter-spacing:.34em;text-indent:.34em}
+  .latin .glyphrow{font-family:var(--serif);font-size:14px;letter-spacing:.7em;text-indent:.7em;color:#8FC7B3;margin:16px 0 14px}
+  .latin .num{font-family:var(--serif);font-size:20px;letter-spacing:.46em;text-indent:.46em;color:rgba(243,238,226,.74)}
+  .latin .rule2{width:64px;height:1px;background:rgba(243,238,226,.20);margin:24px auto 18px}
+  .latin .motto{font-size:10px;letter-spacing:.34em;text-indent:.34em;color:rgba(243,238,226,.36)}
+  .vline{display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 16px;font-size:12px;color:var(--muted);margin-top:14px}
+  .vline b{color:var(--ink);font-weight:600;letter-spacing:.02em}
+  .terms{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:14px}
+  .term{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 12px}
+  .term .la{font-family:var(--serif);font-size:14px;letter-spacing:.02em}
+  .term .zh{font-size:11px;color:var(--muted);margin-top:7px;line-height:1.5}
+  @media (max-width:720px){.wrap{padding:40px 22px 64px}.slots{grid-template-columns:1fr}.terms{grid-template-columns:repeat(2,1fr)}.apphead{height:auto;padding:12px 14px;flex-wrap:wrap}.search{display:none}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="sp"><path d="M0 -1 Q0.27 -0.27 1 0 Q0.27 0.27 0 1 Q-0.27 0.27 -1 0 Q-0.27 -0.27 0 -1 Z"/></g>
+</defs></svg>
+
+<div class="wrap">
+
+  <!-- 01 -->
+  <p class="eyebrow">Naming system · 01</p>
+  <div class="lockup">
+    <svg class="tile" viewBox="0 0 64 64" aria-label="Lodestar">
+      <rect width="64" height="64" rx="16" fill="#0E5A46"/>
+      <g fill="#F3EEE2">
+        <use href="#sp" transform="translate(32 30) scale(7.1)"/>
+        <use href="#sp" transform="translate(23.4 40.5) scale(7.1)" opacity=".92"/>
+        <use href="#sp" transform="translate(40.6 40.5) scale(7.1)" opacity=".92"/>
+      </g>
+    </svg>
+    <div class="wm">Lodestar</div>
+    <div class="rule"></div>
+    <div class="cn">星引</div>
+  </div>
+  <p class="lede">名 <b>Lodestar</b>（引路之星）· 礼 <b>Catasterism</b>（列入星空）· 符号 <span class="glyph">⁂</span>（asterism，星群）。<br>
+  中文名 <b>星引</b>：星的引进，也是引你到星。口号——<b>以书为图，以记为星</b>。</p>
+
+  <!-- 02 -->
+  <div class="sec">
+    <h2>02 · 应用头</h2>
+    <div class="frame">
+      <div class="apphead">
+        <div class="brand">
+          <svg class="tile" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#0E5A46"/><g fill="#F3EEE2"><use href="#sp" transform="translate(32 30) scale(7.1)"/><use href="#sp" transform="translate(23.4 40.5) scale(7.1)" opacity=".92"/><use href="#sp" transform="translate(40.6 40.5) scale(7.1)" opacity=".92"/></g></svg>
+          <span class="name">Lodestar</span>
+          <span class="cn">星引</span>
+          <span class="vr"></span>
+          <span class="tag">以书为图，以记为星</span>
+        </div>
+        <div class="search">选择教材后搜索…</div>
+      </div>
+    </div>
+    <div class="frame dark">
+      <div class="apphead">
+        <div class="brand">
+          <svg class="tile" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#0B3B2E"/><g fill="#F3EEE2"><use href="#sp" transform="translate(32 30) scale(7.1)"/><use href="#sp" transform="translate(23.4 40.5) scale(7.1)" opacity=".92"/><use href="#sp" transform="translate(40.6 40.5) scale(7.1)" opacity=".92"/></g></svg>
+          <span class="name">Lodestar</span>
+          <span class="cn">星引</span>
+          <span class="vr"></span>
+          <span class="tag">以书为图，以记为星</span>
+        </div>
+        <div class="search">选择教材后搜索…</div>
+      </div>
+    </div>
+    <p class="hint">字标 16–17px 时 logo 用 28px；暗色沿用同一形状，只换底色深浅。</p>
+  </div>
+
+  <!-- 03 -->
+  <div class="sec">
+    <h2>03 · 分节线</h2>
+    <div class="prose">
+      <p>群论的第一课不是群，是「什么不能被区分」。伽罗瓦把方程的可解性翻译成置换群的结构，于是「解不出来」这件事，第一次有了形状。</p>
+      <div class="divider"><span>⁂</span></div>
+      <p>所以笔记不是抄下来，是把一个东西挪到另一个坐标系里，看它还剩什么。剩下的部分，才是你真正读懂的。</p>
+    </div>
+    <p class="hint">⁂ 的学名叫 asterism；它同时是排版里的分节符——品牌符号与功能符号同一个，天天出现。</p>
+  </div>
+
+  <!-- 04 -->
+  <div class="sec">
+    <h2>04 · 404</h2>
+    <div class="e404">
+      <svg width="230" height="130" viewBox="0 0 230 130" aria-label="Felis">
+        <g stroke="rgba(243,238,226,.22)" stroke-width="1" fill="none">
+          <path d="M40 96 L58 78 L86 72 L118 74 L140 66 L150 46 L163 32 L172 50 L186 58 L196 76 L188 92 L158 100 L120 102 L86 104 Z"/>
+          <path d="M40 96 L22 88 M150 46 L140 66"/>
+        </g>
+        <g fill="rgba(243,238,226,.85)">
+          <circle cx="40" cy="96" r="2.2"/><circle cx="58" cy="78" r="2.2"/><circle cx="86" cy="72" r="2.2"/>
+          <circle cx="118" cy="74" r="2.2"/><circle cx="140" cy="66" r="2.2"/><circle cx="150" cy="46" r="2.2"/>
+          <circle cx="163" cy="32" r="2.6"/><circle cx="172" cy="50" r="2.2"/><circle cx="186" cy="58" r="2.2"/>
+          <circle cx="196" cy="76" r="2.2"/><circle cx="188" cy="92" r="2.2"/><circle cx="158" cy="100" r="2.2"/>
+          <circle cx="120" cy="102" r="2.2"/><circle cx="86" cy="104" r="2.2"/><circle cx="22" cy="88" r="2.2"/>
+        </g>
+      </svg>
+      <div class="t">这只猫不在星图上</div>
+      <div class="s">404 · Felis, the cat that stayed</div>
+    </div>
+    <p class="hint">猫座 1799 年被拉朗德画上天，后来被星图删掉；但它的主星 HD 85951 在 2018 年被 IAU 正式命名为 Felis。星座没了，星还叫这个名字。</p>
+  </div>
+
+  <!-- 05 -->
+  <div class="sec">
+    <h2>05 · Catasterism 的三个编制</h2>
+    <div class="slots">
+      <div class="slot"><div class="k">版本代号</div><div class="v">4.0.4 “Catasterism”</div><div class="d">大版本代号像 Ubuntu 的动物名，只出现在关于页与启动页。</div></div>
+      <div class="slot"><div class="k">动作</div><div class="v">catasterize</div><div class="d">一条笔记完成、并入导图的那一刻：已 catasterize。</div></div>
+      <div class="slot"><div class="k">仪式</div><div class="v">Catasterism</div><div class="d">全书写完、星图闭合时的一次性提示——「列入星空」。</div></div>
+    </div>
+  </div>
+
+  <!-- 06 -->
+  <div class="sec">
+    <h2>06 · 铭文层</h2>
+    <div class="latin">
+      <div class="caps">LODESTAR</div>
+      <div class="glyphrow">⁂</div>
+      <div class="num">CDIV</div>
+      <div class="rule2"></div>
+      <div class="motto">AD ASTRA · MMXXVI</div>
+    </div>
+    <div class="vline"><span>关于 · 版本</span><span><b>4.0.4</b> · CDIV</span></div>
+    <div class="terms">
+      <div class="term"><div class="la">stella</div><div class="zh">一颗星 · 一条笔记</div></div>
+      <div class="term"><div class="la">sidus</div><div class="zh">星座 · 一张导图</div></div>
+      <div class="term"><div class="la">via</div><div class="zh">路径 · 阅读顺序</div></div>
+      <div class="term"><div class="la">feles</div><div class="zh">猫 · AI 助手</div></div>
+      <div class="term"><div class="la">catasterismus</div><div class="zh">列入星空 · 成图</div></div>
+    </div>
+    <p class="hint">罗马数字只住在铭文层：CDIV ＝ CD(400) + IV(4) ＝ 404。碑刻大写要吃尺寸，14px 会散掉——所以只上大标题、封面和扉页，不进导航栏。</p>
+  </div>
+
+</div>
+</body>
+</html>

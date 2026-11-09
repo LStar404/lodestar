@@ -14,6 +14,7 @@
 - **唯一规范**：[`docs/自动笔记软件设计方案.md`](docs/自动笔记软件设计方案.md)（v1.6，约 2100 行，含数据模型/坐标契约/验收用例）
 - **实现决策**：[`docs/adr.md`](docs/adr.md)（D1–D34）
 - **技术验证**：[`docs/tech-validation-11.0.md`](docs/tech-validation-11.0.md)（marker / docling / pypdf 实测）
+- **品牌手册**：[`docs/brand/README.md`](docs/brand/README.md)（Lodestar · 星引：命名系统、⁂ 符号、CDIV 铭文层）
 
 ---
 
