@@ -16,7 +16,7 @@ import { useStore } from "../state/store";
 type Tab = "send" | "inbox" | "links";
 
 function safeName(s: string): string {
-  return (s || "note-gen-share").replace(/[\\/:*?"<>|]+/g, "_").slice(0, 80);
+  return (s || "lodestar-share").replace(/[\\/:*?"<>|]+/g, "_").slice(0, 80);
 }
 
 /** 分享：发出（Markdown / 离线 HTML / .ngshare 分享包）与收件箱（导入别人的分享包）。 */
@@ -126,14 +126,14 @@ export default function ShareModal({ onClose }: { onClose: () => void }) {
                   <button
                     className="primary"
                     disabled={busy !== null}
-                    title="对方也装了 note-gen：这个文件导入后即可阅读（图片内嵌）"
+                    title="对方也装了 Lodestar：这个文件导入后即可阅读（图片内嵌）"
                     onClick={() => void run("ngshare", () => {
                       const pkg = buildNgshare(data, scope === "chapter" ? chapterTitle : "");
                       const name = safeName(pkg.chapter_title || pkg.title) + ".ngshare";
                       downloadText(name, JSON.stringify(pkg, null, 2), "application/json");
                       setToast("已导出 " + name + "（对方在「分享 → 收件箱」导入）");
                     })}>
-                    导出 .ngshare（note-gen 专用）
+                    导出 .ngshare（Lodestar 专用）
                   </button>
                   <button disabled={busy !== null}
                           title="单文件 HTML：公式字体与插图内嵌，任何浏览器都能看"
@@ -168,7 +168,7 @@ export default function ShareModal({ onClose }: { onClose: () => void }) {
                   </button>
                 </div>
                 <p className="share-note">
-                  .ngshare 给「也装了 note-gen 的人」：导入后能像读自己的笔记一样翻看，插图随包带走；
+                  .ngshare 给「也装了 Lodestar 的人」：导入后能像读自己的笔记一样翻看，插图随包带走；
                   HTML 则给没装软件的人看。两者都在本机生成，不上传任何东西。
                 </p>
               </>

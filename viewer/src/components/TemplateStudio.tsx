@@ -69,7 +69,7 @@ export default function TemplateStudio({ onClose }: { onClose: () => void }) {
       if (apply && docId) {
         await api.put(`/api/v1/docs/${docId}/template`, { template_id: saved.id, revision: saved.revision });
         setApplied(saved);
-        window.dispatchEvent(new CustomEvent("note-gen:template-applied", { detail: { docId } }));
+        window.dispatchEvent(new CustomEvent("lodestar:template-applied", { detail: { docId } }));
         setNotice("已保存并应用到当前书。后续生成使用此模板，已有笔记保持原样。");
       } else setNotice("已保存到模板库，可在其他书中复用。");
     } catch (e: any) { setError(e.message); }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""note-gen 管线 CLI（9.1）。退出码：0 成功；1 参数错误；2 运行错误。"""
+"""Lodestar 星引 管线 CLI（9.1）。退出码：0 成功；1 参数错误；2 运行错误。"""
 
 from __future__ import annotations
 
@@ -420,7 +420,7 @@ def _load_config() -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="cli.py", description="note-gen 管线 CLI")
+    p = argparse.ArgumentParser(prog="cli.py", description="Lodestar 星引 管线 CLI")
     sub = p.add_subparsers(dest="command", required=True)
 
     def common(sp):

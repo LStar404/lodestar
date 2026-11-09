@@ -1,12 +1,12 @@
 @echo off
 setlocal EnableExtensions
-title note-gen 自动笔记软件
+title Lodestar 星引
 rem ============================================================
-rem  note-gen 一键启动器
+rem  Lodestar 星引 一键启动
 rem  用法：
-rem    启动自动笔记软件.bat               启动服务并打开浏览器
-rem    启动自动笔记软件.bat --no-browser   只启动服务（不打开浏览器）
-rem    启动自动笔记软件.bat 9000           指定端口启动
+rem    启动星引.bat               启动服务并打开浏览器
+rem    启动星引.bat --no-browser   只启动服务（不打开浏览器）
+rem    启动星引.bat 9000           指定端口启动
 rem ============================================================
 
 set "APP_DIR=%~dp0"
@@ -61,7 +61,7 @@ if not exist "viewer\dist\index.html" echo [警告] 前端未构建，网页将显示占位页；
 rem ---------- 3) 启动服务 + 打开浏览器 ----------
 echo.
 echo ============================================================
-echo   note-gen 自动笔记软件
+echo   Lodestar 星引
 echo   地址 : http://127.0.0.1:%PORT%
 echo   目录 : %APP_DIR%
 echo   停止 : 在本窗口按 Ctrl+C 或直接关闭窗口

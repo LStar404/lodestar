@@ -1,5 +1,5 @@
 /* ============================================================
-   note-gen 设计系统：明亮/暗色主题 + 组件样式
+   Lodestar 星引 设计系统：明亮/暗色主题 + 组件样式
    ============================================================ */
 :root {
   --bg: #f4f6fb;
@@ -171,6 +171,14 @@ body {
   width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center;
   background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff;
   font-size: 15px; box-shadow: var(--shadow-sm);
+}
+/* 字标：现代衬线（碑刻体只留给封面与铭文，导航栏 16px 用碑刻体会散） */
+.toolbar .brand .brand-copy strong {
+  font-family: Georgia, "Times New Roman", "Songti SC", serif;
+  font-size: 16px; font-weight: 600; letter-spacing: .01em;
+}
+.toolbar .brand .brand-zh {
+  font-size: 11.5px; letter-spacing: .32em; color: var(--accent); margin-left: 1px;
 }
 
 button, .file-button {

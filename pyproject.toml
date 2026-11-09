@@ -1,7 +1,7 @@
 [project]
-name = "note-gen"
-version = "0.1.0"
-description = "自动笔记软件：PDF -> 模块化、可双向定位、可增删改的 Markdown/LaTeX 笔记"
+name = "lodestar"
+version = "4.0.4"
+description = "星引 Lodestar：PDF -> 模块化、可双向定位、可增删改的 Markdown/LaTeX 笔记"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

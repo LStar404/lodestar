@@ -10,6 +10,7 @@ import NoteZoom from "./components/NoteZoom";
 import DeferredPanel from "./components/DeferredPanel";
 import ReviewQueue from "./components/ReviewQueue";
 import { useStore } from "./state/store";
+import { readBrand, writeBrand } from "./lib/brand";
 
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
 const SetupGuide = lazy(() => import("./components/SetupGuide"));
@@ -17,7 +18,7 @@ const SetupGuide = lazy(() => import("./components/SetupGuide"));
 // 三栏初始列宽（px）：随窗口宽度给个合理默认
 function initialWidths(): [number, number] {
   try {
-    const v = JSON.parse(localStorage.getItem("note-gen-col-widths") || "null");
+    const v = JSON.parse(readBrand("col-widths") || "null");
     if (Array.isArray(v) && v.length === 2 && isFinite(v[0]) && isFinite(v[1])) {
       return [Math.max(180, Number(v[0])), Math.max(180, Number(v[1]))];
     }
@@ -33,7 +34,7 @@ export default function App() {
   const setupOpen = useStore((s) => s.setupOpen);
   // 主题：跟随 localStorage，首次进入用浅色
   useEffect(() => {
-    const saved = localStorage.getItem("note-gen-theme") || "light";
+    const saved = readBrand("theme") || "light";
     document.documentElement.setAttribute("data-theme", saved);
   }, []);
 
@@ -41,7 +42,7 @@ export default function App() {
   const [widths, setWidths] = useState<[number, number]>(initialWidths);
   const colsRef = useRef<HTMLElement>(null);
   useEffect(() => {
-    localStorage.setItem("note-gen-col-widths", JSON.stringify(widths));
+    writeBrand("col-widths", JSON.stringify(widths));
   }, [widths]);
   // 把宽度夹到 [MIN, 可用上限]：上限 = 容器宽 - 其他两栏最小宽 - 两个拖拽把手
   const clampWidths = (w: [number, number]): [number, number] => {
@@ -120,7 +121,7 @@ export default function App() {
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent("note-gen:save"));
+        window.dispatchEvent(new CustomEvent("lodestar:save"));
         return;
       }
       if (e.key === "Escape") {
@@ -157,7 +158,7 @@ export default function App() {
   // 新人引导：首次进入自动弹教学向导（认识产品/界面导览/上手/配置自检）；
   // 看过与否记 localStorage，工具栏「使用引导」可随时重看。
   useEffect(() => {
-    if (!localStorage.getItem("note-gen-onboarded")) {
+    if (!readBrand("onboarded")) {
       useStore.getState().openOnboard(true);
       return;
     }
@@ -165,7 +166,7 @@ export default function App() {
     api
       .setupStatus()
       .then((s: any) => {
-        if (s.first_run && !s.ready && !localStorage.getItem("note-gen-setup-seen")) {
+        if (s.first_run && !s.ready && !readBrand("setup-seen")) {
           useStore.getState().openSetup(true);
         }
       })

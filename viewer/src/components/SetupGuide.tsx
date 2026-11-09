@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useStore } from "../state/store";
+import { writeBrand } from "../lib/brand";
 
 /** 配置指南（首次使用引导，ADR D35）：分步向导 + 环境自检。
  *
@@ -143,7 +144,7 @@ export default function SetupGuide() {
   const steps = status?.steps ?? [];
   const step = steps[stepIdx] ?? steps[0];
   const close = () => {
-    localStorage.setItem("note-gen-setup-seen", "1");
+    writeBrand("setup-seen", "1");
     setOpen(false);
   };
 

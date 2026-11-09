@@ -1,4 +1,6 @@
 import Icon from "./Icon";
+import StarMark from "./StarMark";
+import { BRAND, readBrand, writeBrand } from "../lib/brand";
 import ActionMenu from "./ActionMenu";
 import GlobalSearch from "./GlobalSearch";
 import { lazy, useEffect, useRef, useState } from "react";
@@ -429,7 +431,7 @@ export default function Toolbar() {
   };
 
   const [theme, setTheme] = useState<string>(
-    () => localStorage.getItem("note-gen-theme") || "light"
+    () => readBrand("theme") || "light"
   );
   const [genName, setGenName] = useState("");   // 生成任务手动命名（可选）
   const [deleted, setDeleted] = useState<null | {
@@ -539,7 +541,7 @@ export default function Toolbar() {
 
   const applyTheme = (next: string) => {
     setTheme(next);
-    localStorage.setItem("note-gen-theme", next);
+    writeBrand("theme", next);
     document.documentElement.setAttribute("data-theme", next);
   };
 
@@ -547,9 +549,10 @@ export default function Toolbar() {
     <>
       <header className="toolbar">
         <div className="toolbar-top">
-          <div className="brand" title="note-gen · 自动笔记软件">
-            <span className="logo"><Icon name="book" size={16} /></span>
-            <span className="brand-copy"><strong>note-gen<span className="brand-dot">.</span></strong></span>
+          <div className="brand" title={`${BRAND.en} · ${BRAND.zh}｜${BRAND.tagline}`}>
+            <span className="logo"><StarMark size={20} /></span>
+            <span className="brand-copy"><strong>{BRAND.en}</strong></span>
+            <span className="brand-zh">{BRAND.zh}</span>
           </div>
           <GlobalSearch />
 

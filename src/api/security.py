@@ -39,7 +39,7 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
 
         path = request.url.path
         if path.startswith("/api/"):
-            supplied = request.headers.get("x-local-token") or request.cookies.get("note_gen_session")
+            supplied = request.headers.get("x-local-token") or request.cookies.get("lodestar_session")
             if not supplied or not secrets.compare_digest(str(supplied), self.token):
                 return JSONResponse({"error": "FORBIDDEN", "message": "缺少或错误的 X-Local-Token"},
                                     status_code=403)

@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useStore } from "../state/store";
+import { BRAND, brandKey } from "../lib/brand";
 
 /** 新人引导（首次进入自动弹出）：认识产品 → 界面导览 → 三分钟上手 → 配置自检。
 
  与「配置指南」分工：本向导讲清楚产品怎么用（教学），配置指南做深度配置（六步自检）。
- 看过与否记在 localStorage（note-gen-onboarded），工具栏「使用引导」可随时重看。 */
+ 看过与否记在 localStorage（lodestar-onboarded），工具栏「使用引导」可随时重看。 */
 
-const ONBOARDED_KEY = "note-gen-onboarded";
+const ONBOARDED_KEY = brandKey("onboarded");
 
 const FLOW = [
   ["📥 导入讲义", "拖入 PDF（数字版/扫描版）或 PPTX；老师的讲义可以逐份「追加」到同一本书"],
@@ -73,7 +74,7 @@ export default function OnboardingWizard() {
   return (
     <div className="modal-mask" onClick={done}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <h2>欢迎使用 note-gen</h2>
+        <h2>欢迎使用 {BRAND.en} {BRAND.zh}</h2>
         <div className="muted">
           教材进、带出处的笔记出——每一句话都能点回原文页码；人工修改永远不被 AI 覆盖。
         </div>

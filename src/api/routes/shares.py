@@ -1,4 +1,4 @@
-"""分享包（.ngshare）：对方装了 note-gen 就能直接导入阅读（本地文件，不走网络）。
+"""分享包（.ngshare）：对方装了 Lodestar 就能直接导入阅读（本地文件，不走网络）。
 
 格式（JSON v1）是纯数据：标题 + 块（含出处页码与引文）+ 插图 data URL。导入后只读，
 渲染复用前端 markdown/KaTeX 管线；校验从严（格式/版本/尺寸/插图 MIME），避免坏包
@@ -21,7 +21,7 @@ from src.core.text import utc_now_iso
 
 router = APIRouter()
 
-FORMAT = "note-gen-share"
+FORMAT = "note-gen-share"  # 兼容旧包的格式标识，不要改
 VERSION = 1
 MAX_FILE_BYTES = 40 * 1024 * 1024
 MAX_BLOCKS = 2000
@@ -74,9 +74,9 @@ def _page(value, *, what: str) -> int | None:
 def validate_share(payload) -> dict:
     """把任意 JSON 收窄成合法的分享包；不合规一律 400（说清哪里不对）。"""
     if not isinstance(payload, dict):
-        raise InputError("不是合法的 note-gen 分享包（根节点必须是对象）")
+        raise InputError("不是合法的 Lodestar 分享包（根节点必须是对象）")
     if payload.get("format") != FORMAT:
-        raise InputError("不是合法的 note-gen 分享包（format 不匹配）")
+        raise InputError("不是合法的 Lodestar 分享包（format 不匹配）")
     version = payload.get("version")
     if type(version) is not int:
         raise InputError("分享包版本不合法")

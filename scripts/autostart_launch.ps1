@@ -4,7 +4,7 @@ $ErrorActionPreference = "SilentlyContinue"
 
 $root  = Split-Path -Parent $PSScriptRoot
 $app   = Split-Path -Parent $root
-$launcher = Join-Path $app "启动自动笔记软件.bat"
+$launcher = Join-Path $app "启动星引.bat"
 $logDir = Join-Path $root "data\logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir "autostart.log"

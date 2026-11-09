@@ -132,7 +132,7 @@ export async function buildShareHtml(payload: SharePayload): Promise<string> {
     "</style></head><body>",
     coverHtml,
     "<h1>" + escapeHtml(payload.title) + "</h1>",
-    '<div class="meta">note-gen 分享' + escapeHtml(when) + "</div>",
+    '<div class="meta">Lodestar 分享' + escapeHtml(when) + "</div>",
     parts.join("\n"),
     "</body></html>",
   ].join("\n");
@@ -140,7 +140,7 @@ export async function buildShareHtml(payload: SharePayload): Promise<string> {
 
 /** 纯文本版：公式保留 TeX 源码，适合直接粘进聊天窗口。 */
 export function buildPlainText(payload: SharePayload): string {
-  const lines: string[] = [payload.title, "（note-gen 分享）", ""];
+  const lines: string[] = [payload.title, "（Lodestar 分享）", ""];
   for (const b of payload.blocks) {
     if (b.title) lines.push("—— " + b.title + " ——");
     lines.push((b.content || "").trim());
@@ -152,7 +152,7 @@ export function buildPlainText(payload: SharePayload): string {
 }
 
 
-/** .ngshare 分享包：对方装了 note-gen 就能直接导入阅读（纯 JSON，图片内嵌）。 */
+/** .ngshare 分享包：对方装了 Lodestar 就能直接导入阅读（纯 JSON，图片内嵌）。 */
 export interface NgshareBlock {
   type: string;
   title: string;
@@ -161,6 +161,7 @@ export interface NgshareBlock {
 }
 
 export interface NgsharePayload {
+  /** 兼容旧分享包的格式标识，不要改（改了旧包读不了）。 */
   format: "note-gen-share";
   version: 1;
   created_at: string;

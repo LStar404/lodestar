@@ -19,8 +19,8 @@ export default function BookCover() {
     };
     setTemplate(null);
     void load();
-    window.addEventListener("note-gen:template-applied", load);
-    return () => { cancelled = true; window.removeEventListener("note-gen:template-applied", load); };
+    window.addEventListener("lodestar:template-applied", load);
+    return () => { cancelled = true; window.removeEventListener("lodestar:template-applied", load); };
   }, [docId]);
   const cover = template?.cover;
   if (!cover || cover.style === "none") return null;

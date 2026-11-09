@@ -11,10 +11,10 @@ param(
 $ErrorActionPreference = "Stop"
 
 $root       = Split-Path -Parent $PSScriptRoot
-$launcher   = Join-Path (Split-Path -Parent $root) "启动自动笔记软件.bat"
+$launcher   = Join-Path (Split-Path -Parent $root) "启动星引.bat"
 $wrapper    = Join-Path $PSScriptRoot "autostart_launch.ps1"
 $startup    = [Environment]::GetFolderPath("Startup")
-$shortcut   = Join-Path $startup "自动笔记软件.lnk"
+$shortcut   = Join-Path $startup "星引.lnk"
 $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 
 if (-not (Test-Path $launcher)) { Write-Error "找不到启动器：$launcher" }
@@ -41,7 +41,7 @@ $lnk.TargetPath = $powershell
 $lnk.Arguments = ('-WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $wrapper + '"')
 $lnk.WorkingDirectory = $root
 $lnk.IconLocation = "$env:SystemRoot\System32\shell32.dll,21"
-$lnk.Description = "自动笔记软件（带日志与重试）"
+$lnk.Description = "星引（带日志与重试）"
 $lnk.Save()
 
 Write-Output "已安装开机自启：$shortcut"

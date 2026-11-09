@@ -45,11 +45,11 @@ def create_app(root: str | Path | None = None, port: int | None = None) -> FastA
         except Exception:  # noqa: BLE001 - 启动恢复失败不得阻止服务启动
             import logging
 
-            logging.getLogger("note-gen").exception(
+            logging.getLogger("lodestar").exception(
                 "追加中断恢复失败（备份已保留，重启会重试）")
         yield
 
-    app = FastAPI(title="note-gen", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Lodestar 星引", version="4.0.4", lifespan=lifespan)
     app.state.app_state = state
 
     # Host/Origin 白名单包含实际监听端口（10.6.5 精确 Host 校验）
@@ -81,7 +81,7 @@ def create_app(root: str | Path | None = None, port: int | None = None) -> FastA
     async def _handle_unexpected(request: Request, exc: Exception):
         import logging
 
-        logging.getLogger("note-gen").exception("未捕获异常: %s", exc)
+        logging.getLogger("lodestar").exception("未捕获异常: %s", exc)
         return JSONResponse({"error": "INTERNAL_ERROR",
                              "message": f"{type(exc).__name__}: {str(exc)[:300]}",
                              "detail": {}}, status_code=500)
@@ -121,7 +121,7 @@ def create_app(root: str | Path | None = None, port: int | None = None) -> FastA
         @app.get("/", response_class=HTMLResponse)
         async def index_fallback():
             return HTMLResponse(
-                "<html><body><h1>note-gen</h1>"
+                "<html><body><h1>Lodestar</h1>"
                 "<p>前端未构建：请运行 <code>cd viewer &amp;&amp; pnpm install &amp;&amp; pnpm build</code></p>"
                 f'<p>API 已就绪，本地 token：<code>{state.token_value[:6]}…</code></p>'
                 "</body></html>")

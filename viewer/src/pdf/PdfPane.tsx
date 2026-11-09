@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import HighlightLayer, { type HighlightRect } from "../components/HighlightLayer";
 import { pdfRectToScreen, screenRectToPdf, type Rect } from "./coord";
 import { useStore } from "../state/store";
+import { readBrand, writeBrand } from "../lib/brand";
 
 let pdfjsModule: Promise<typeof import("pdfjs-dist")> | null = null;
 function loadPdfJs() {
@@ -52,13 +53,13 @@ export default function PdfPane(): ReactElement {
   const [scale, setScale] = useState(1.2);
   // 缩放策略：整页（按栏宽和栏高取较小比例，一屏看完整页）/ 适宽（铺满栏宽，需上下滚）/ 手动
   const [fitMode, setFitMode] = useState<FitMode>(() => {
-    const saved = localStorage.getItem("note-gen-pdf-fit");
+    const saved = readBrand("pdf-fit");
     return saved === "width" || saved === "none" ? saved : "page";
   });
   // 滚动容器可用宽高（随窗口、栏宽拖拽实时更新），整页/适宽都按它算比例
   const [box, setBox] = useState({ w: 0, h: 0 });
   // 拖拽平移：默认开启（拖动画面），关掉后恢复文字框选（选区匹配）；中键拖拽始终平移
-  const [panMode, setPanMode] = useState(() => localStorage.getItem("note-gen-pdf-pan") !== "0");
+  const [panMode, setPanMode] = useState(() => readBrand("pdf-pan") !== "0");
   // 文档代次：加载完成 +1，驱动重绘效果（仅靠 docId 会在切换教材时漏触发——
   // 加载是异步的，等它完成时 pdfPage 已被重置为 1，依赖未变、画布残留旧教材）
   const [docGen, setDocGen] = useState(0);
@@ -325,7 +326,7 @@ export default function PdfPane(): ReactElement {
 
   const applyFit = (mode: FitMode) => {
     setFitMode(mode);
-    localStorage.setItem("note-gen-pdf-fit", mode);
+    writeBrand("pdf-fit", mode);
   };
 
   // 手动缩放一旦介入就退出自动适配，否则下一次重排会把用户刚调的倍率又拉回去
@@ -372,7 +373,7 @@ export default function PdfPane(): ReactElement {
           title="拖拽平移开/关：开启时按住拖动画面；关闭后可框选文字做选区匹配（中键拖拽始终平移）"
           onClick={() =>
             setPanMode((v) => {
-              localStorage.setItem("note-gen-pdf-pan", v ? "0" : "1");
+              writeBrand("pdf-pan", v ? "0" : "1");
               return !v;
             })
           }

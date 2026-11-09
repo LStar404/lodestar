@@ -12,7 +12,7 @@ from src.core.publications import CSP, PublicationStore
 
 
 def create_reader(directory: str | Path) -> FastAPI:
-    app = FastAPI(title="note-gen shared reading", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Lodestar 星引 · 分享阅读", docs_url=None, redoc_url=None, openapi_url=None)
     snapshots = PublicationStore(Path(directory))
 
     @app.get("/health")
@@ -39,7 +39,7 @@ def create_reader(directory: str | Path) -> FastAPI:
 
 
 def create_app() -> FastAPI:
-    directory = os.environ.get("NOTE_GEN_PUBLICATIONS_DIR")
+    directory = os.environ.get("LODESTAR_PUBLICATIONS_DIR") or os.environ.get("NOTE_GEN_PUBLICATIONS_DIR")
     if not directory:
-        raise RuntimeError("请设置 NOTE_GEN_PUBLICATIONS_DIR，指向单独的分享版本目录")
+        raise RuntimeError("请设置 LODESTAR_PUBLICATIONS_DIR（旧名 NOTE_GEN_PUBLICATIONS_DIR 仍兼容），指向单独的分享版本目录")
     return create_reader(directory)

@@ -151,18 +151,18 @@ def export_anki(store: DocStore, chapter_id: str | None = None, *, out_dir: Path
     cards = collect_cards(store, chapter_id)
     out_dir.mkdir(parents=True, exist_ok=True)
     suffix = f"-{chapter_id}" if chapter_id else ""
-    deck_name = deck_name or f"note-gen · {store.manifest().get('title', store.doc_id)}{suffix}"
+    deck_name = deck_name or f"Lodestar · {store.manifest().get('title', store.doc_id)}{suffix}"
 
     try:
         import genanki
     except Exception:
         return _export_csv(store, cards, out_dir, suffix, encoding=encoding)
 
-    model_id = _stable_id("note-gen-model", "v1")
+    model_id = _stable_id("note-gen-model", "v1")  # 稳定 id 保持不变，老用户不会多出一套模型
     deck_id = _stable_id("note-gen-deck", store.doc_id, chapter_id or "_book")
     model = genanki.Model(
         model_id,
-        "note-gen 笔记卡",
+        "Lodestar 笔记卡",
         fields=[{"name": "Front"}, {"name": "Back"}, {"name": "Source"}],
         templates=[{
             "name": "卡片",

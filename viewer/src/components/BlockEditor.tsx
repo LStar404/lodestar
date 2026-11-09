@@ -3,6 +3,7 @@ import { api, type NoteBlock } from "../api/client";
 import { renderMarkdown } from "../lib/markdown";
 import { markdownEdit, mergeSavedText, sameText, type EditCommand, type EditorText } from "../lib/editor-commands";
 import { useStore } from "../state/store";
+import { readBrand, writeBrand } from "../lib/brand";
 import "./editor.css";
 
 const Preview = memo(function Preview({ content, docId }: { content: string; docId: string }) {
@@ -30,7 +31,7 @@ export default function BlockEditor({ block, mode }: { block: NoteBlock; mode: "
   const generation = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [autoSave, setAutoSave] = useState(() => {
-    try { return localStorage.getItem("note-gen-auto-save") !== "false"; } catch { return true; }
+    try { return readBrand("auto-save") !== "false"; } catch { return true; }
   });
   const [showPreview, setShowPreview] = useState(false);
   const [previewContent, setPreviewContent] = useState(draft.content);
@@ -114,8 +115,8 @@ export default function BlockEditor({ block, mode }: { block: NoteBlock; mode: "
   saveRef.current = save;
   useEffect(() => {
     const onSave = () => void saveRef.current();
-    window.addEventListener("note-gen:save", onSave);
-    return () => window.removeEventListener("note-gen:save", onSave);
+    window.addEventListener("lodestar:save", onSave);
+    return () => window.removeEventListener("lodestar:save", onSave);
   }, []);
   useEffect(() => {
     if (!autoSave || !dirty || saving || error || isComposing) return;
@@ -151,7 +152,7 @@ export default function BlockEditor({ block, mode }: { block: NoteBlock; mode: "
       <strong>{mode === "preview" ? "笔记预览" : "编辑笔记"}</strong>
       <label className="editor-autosave"><input type="checkbox" checked={autoSave} onChange={(e) => {
         setAutoSave(e.target.checked);
-        try { localStorage.setItem("note-gen-auto-save", String(e.target.checked)); } catch { /* optional preference */ }
+        try { writeBrand("auto-save", String(e.target.checked)); } catch { /* optional preference */ }
       }} />自动保存</label>
       {mode === "source" && <button aria-pressed={showPreview} onClick={() => {
         setPreviewContent(current.current.content); setShowPreview(!showPreview);

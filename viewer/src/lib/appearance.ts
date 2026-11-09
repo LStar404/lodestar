@@ -1,5 +1,7 @@
 /** 外观设置：背景预设/自定义背景/动效档位。localStorage 持久化，变更即生效。 */
 
+import { readBrand, writeBrand } from "./brand";
+
 export type MotionLevel = "full" | "soft" | "off";
 
 export interface Appearance {
@@ -12,7 +14,7 @@ export interface Appearance {
   motion: MotionLevel;
 }
 
-const KEY = "note-gen-appearance";
+const KEY = "appearance";
 
 export const BG_PRESETS: [string, string][] = [
   ["theme", "跟随主题"],
@@ -40,7 +42,7 @@ const DEFAULTS: Appearance = {
 
 export function loadAppearance(): Appearance {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = readBrand(KEY);
     if (raw) return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Appearance>) };
   } catch {
     /* 坏数据回退默认 */
@@ -50,7 +52,7 @@ export function loadAppearance(): Appearance {
 
 export function saveAppearance(a: Appearance): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(a));
+    writeBrand(KEY, JSON.stringify(a));
   } catch {
     /* 隐私模式等存储失败不阻塞 */
   }

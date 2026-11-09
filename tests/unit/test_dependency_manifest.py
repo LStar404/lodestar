@@ -12,12 +12,12 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[2]            # note-gen/
+ROOT = Path(__file__).resolve().parents[2]            # 仓库根
 WORKSPACE = ROOT.parent                               # 上级目录（用户桌面布局的启动脚本所在）
-LAUNCHER_INSIDE = ROOT / "scripts" / "启动自动笔记软件.bat"
+LAUNCHER_INSIDE = ROOT / "scripts" / "启动星引.bat"
 # 外层启动脚本不在仓库里（桌面工作区特有）；克隆/CI 环境不存在时相关断言跳过，
 # 但仓库内的 scripts 启动脚本与两个依赖清单必须始终正确。
-LAUNCHER_OUTSIDE = WORKSPACE / "启动自动笔记软件.bat"
+LAUNCHER_OUTSIDE = WORKSPACE / "启动星引.bat"
 
 
 def existing_launchers() -> list[Path]:
@@ -80,4 +80,4 @@ def test_launchers_stay_in_sync():
     if not LAUNCHER_OUTSIDE.exists():
         pytest.skip("外层启动脚本不在仓库内（克隆/CI 环境），跳过双份同步检查")
     assert _read_text(LAUNCHER_INSIDE) == _read_text(LAUNCHER_OUTSIDE), \
-        "note-gen/scripts 与上级目录的两个启动脚本必须保持内容一致"
+        "scripts/ 与上级目录的两个启动脚本必须保持内容一致"
