@@ -467,7 +467,7 @@ python scripts/env_report.py
 ## 数据与目录布局
 
 ```
-note-gen/
+lodestar/
 ├── data/
 │   ├── runtime.db                 # 不可重建：任务/用量/agent 会话
 │   ├── models.json                # 模型注册表（含密钥，勿入库喵）

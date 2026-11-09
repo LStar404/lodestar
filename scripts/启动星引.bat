@@ -10,7 +10,7 @@ rem    启动星引.bat 9000           指定端口启动
 rem ============================================================
 
 set "APP_DIR=%~dp0"
-if not exist "%APP_DIR%cli.py" set "APP_DIR=%~dp0note-gen\"
+if not exist "%APP_DIR%cli.py" set "APP_DIR=%~dp0lodestar\"
 set "PORT=8787"
 set "NO_BROWSER=0"
 
